@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Input } from '../components/Input';
-import { Botao } from '../components/Botao';
+import { Input, Botao } from '../components';
 
 export function Login() {
   const [email, setEmail] = useState('');

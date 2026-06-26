@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Conta } from '../types/db';
-import { Botao } from '../components/Botao';
+import { Botao } from '../components';
 
 /** Home provisória (scaffold). Será substituída pela Home real (§5.1).
  *  Por ora prova que, autenticado, a RLS libera a leitura das contas. */
