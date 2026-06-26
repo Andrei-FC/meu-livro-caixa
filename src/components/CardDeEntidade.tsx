@@ -1,5 +1,6 @@
 import { BarraDePrevisao } from './BarraDePrevisao';
 import { formatarBR } from '../lib/formato';
+import { IconeImage } from '../icons';
 
 /**
  * Card de entidade — §5.3, §4.9, Figma set 2018:36.
@@ -68,7 +69,7 @@ function ComTesteira(props: ContaProps | PoupancaProps | CofreProps) {
           color: testeiraFg,
         }}
       >
-        <LogoPlaceholder />
+        <SlotLogo />
         <span className="type-numeric">{nome}</span>
       </div>
 
@@ -96,10 +97,10 @@ function Cartao({ nome, valor, tema, realizado, previsao, legenda }: CartaoProps
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-          <LogoPlaceholder />
+          <SlotLogo />
           <span className="type-numeric">{nome}</span>
         </span>
-        <BandeiraPlaceholder />
+        <SlotBandeira />
       </div>
 
       <span className="type-display">{formatarBR(valor, { prefixo: true })}</span>
@@ -124,18 +125,17 @@ function Mini({ rotulo, cor, texto }: { rotulo: string; cor: string; texto: stri
   );
 }
 
-/* placeholders até o passo de ícones / biblioteca de logos */
-function LogoPlaceholder() {
+/* Slots de logo/bandeira: recebem o IconeImage genérico por ora; quando a
+   biblioteca de logos de banco/bandeira entrar no Figma (§4.9), trocar o
+   conteúdo pelo logo real resolvido por `icone`. O slot em si fica. */
+function SlotLogo() {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, background: 'rgba(255,255,255,0.18)' }}>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-        <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="2" />
-        <path d="M3 16l5-4 4 3 4-5 5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
+      <IconeImage tamanho={18} />
     </span>
   );
 }
-function BandeiraPlaceholder() {
+function SlotBandeira() {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 24, borderRadius: 4, background: 'rgba(255,255,255,0.18)' }} aria-hidden />
   );

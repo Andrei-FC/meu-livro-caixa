@@ -22,3 +22,6 @@ export { Tabs } from './Tabs';
 export type { AbaId } from './Tabs';
 export { ModalDeAlerta } from './ModalDeAlerta';
 export type { TipoAlerta } from './ModalDeAlerta';
+
+// Ícones (re-export de conveniência; também acessíveis em '../icons')
+export * from '../icons';

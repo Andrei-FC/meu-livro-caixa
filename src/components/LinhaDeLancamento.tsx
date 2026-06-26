@@ -1,5 +1,6 @@
 import { Tag, type TagCor } from './Tag';
 import { Valor } from './Valor';
+import { IconePencil } from '../icons';
 
 /**
  * Linha de lançamento — §5.1, Figma set 2006:64.
@@ -74,23 +75,9 @@ export function LinhaDeLancamento({ tipo, descricao, valor, conta, onEditar }: P
         }}
       >
         {/* ícone de editar — entra no passo de ícones */}
-        <IconePlaceholder />
+        <IconePencil tamanho={14} />
       </button>
     </div>
   );
 }
 
-/** Placeholder até o passo de ícones consolidar a estratégia. */
-function IconePlaceholder() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M4 20h4l10-10-4-4L4 16v4zM14 6l4 4"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}

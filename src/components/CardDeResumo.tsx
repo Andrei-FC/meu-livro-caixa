@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { formatarBR } from '../lib/formato';
+import { IconeEye, IconeEyeOff } from '../icons';
 
 /**
  * Card de resumo — §5.1, Figma 2007:17.
@@ -72,7 +73,7 @@ export function CardDeResumo({
             color: 'var(--text-muted)',
           }}
         >
-          {oculto ? <IconeOlhoFechado /> : <IconeOlho />}
+          {oculto ? <IconeEyeOff tamanho={22} /> : <IconeEye tamanho={22} />}
         </button>
       </div>
 
@@ -134,18 +135,3 @@ function Oculto({ oculto, children }: { oculto: boolean; children: React.ReactNo
   );
 }
 
-function IconeOlho() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
-    </svg>
-  );
-}
-function IconeOlhoFechado() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M3 3l18 18M10.6 10.6a3 3 0 004.2 4.2M9.9 5.2A9.8 9.8 0 0112 5c6.5 0 10 7 10 7a17 17 0 01-3.2 4M6.6 6.6A17 17 0 002 12s3.5 7 10 7a9.8 9.8 0 002.1-.2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}

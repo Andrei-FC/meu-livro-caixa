@@ -1,3 +1,4 @@
+import { IconeAdd } from '../icons';
 /**
  * FAB — §5.1, Figma 2006:34.
  * Botão flutuante 56×56, círculo, accent/default, ícone "+" (text/on-accent),
@@ -32,9 +33,7 @@ export function FAB({ onClick, 'aria-label': ariaLabel = 'Novo lançamento' }: P
         boxShadow: '0 6px 16px rgba(0, 0, 0, 0.35)',
       }}
     >
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden>
-        <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      </svg>
+      <IconeAdd />
     </button>
   );
 }

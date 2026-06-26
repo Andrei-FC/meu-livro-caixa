@@ -2,6 +2,7 @@ import { Tag, type TagCor } from './Tag';
 import { Valor } from './Valor';
 import { BarraDePrevisao } from './BarraDePrevisao';
 import { formatarBR } from '../lib/formato';
+import { IconeChevronRight } from '../icons';
 
 /**
  * Linha de fatura — §4.4, §5.1, Figma set 2134:790.
@@ -84,7 +85,7 @@ export function LinhaDeFatura({
         )}
 
         <span style={{ flex: '0 0 auto', display: 'inline-flex', color: 'var(--text-muted)' }} aria-hidden>
-          <IconeChevron />
+          <IconeChevronRight />
         </span>
       </div>
 
@@ -99,11 +100,3 @@ export function LinhaDeFatura({
   );
 }
 
-/** Placeholder até o passo de ícones. */
-function IconeChevron() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
