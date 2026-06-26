@@ -1,0 +1,16 @@
+/* Reset mínimo + base. Cores SEMPRE via tokens (nunca hex cru aqui). */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root { height: 100%; }
+
+body {
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  /* safe-area do iPhone (notch / barra inferior) */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+button { font-family: inherit; cursor: pointer; }

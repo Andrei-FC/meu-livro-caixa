@@ -1,0 +1,173 @@
+/* AUTO-GENERATED from tokens.json — do not edit by hand.
+   Source: Figma Figma file 2h3h8G4YWPLxmbYC4tQ3TD · Meu Livro-Caixa v0.7.1 */
+
+:root {
+  --p-slate-50: #f8fafc;
+  --p-slate-100: #f1f5f9;
+  --p-slate-200: #e2e8f0;
+  --p-slate-300: #cbd5e1;
+  --p-slate-400: #94a3b8;
+  --p-slate-500: #64748b;
+  --p-slate-600: #475569;
+  --p-slate-700: #334155;
+  --p-slate-800: #1e293b;
+  --p-slate-900: #0f172a;
+  --p-slate-950: #020617;
+  --p-slate-500-a20: #64748b33;
+  --p-white: #ffffff;
+  --p-black: #000000;
+  --p-indigo-50: #eef2ff;
+  --p-indigo-100: #e0e7ff;
+  --p-indigo-200: #c7d2fe;
+  --p-indigo-300: #a5b4fc;
+  --p-indigo-400: #818cf8;
+  --p-indigo-500: #6366f1;
+  --p-indigo-600: #4f46e5;
+  --p-indigo-700: #4338ca;
+  --p-indigo-800: #3730a3;
+  --p-indigo-900: #312e81;
+  --p-indigo-950: #1e1b4b;
+  --p-emerald-300: #6ee7b7;
+  --p-emerald-400: #34d399;
+  --p-emerald-500: #10b981;
+  --p-emerald-600: #059669;
+  --p-rose-300: #fda4af;
+  --p-rose-400: #fb7185;
+  --p-rose-500: #f43f5e;
+  --p-rose-600: #e11d48;
+  --p-amber-400: #fbbf24;
+  --p-amber-500: #f59e0b;
+  --p-sky-400: #38bdf8;
+  --p-sky-500: #0ea5e9;
+  --p-violet-400: #a78bfa;
+  --p-violet-500: #8b5cf6;
+  --p-teal-400: #2dd4bf;
+  --p-teal-500: #14b8a6;
+  --p-orange-500: #f97316;
+  --p-pink-500: #ec4899;
+  --p-lime-500: #84cc16;
+  --p-cyan-500: #06b6d4;
+  --p-fuchsia-400: #e879f9;
+  --p-fuchsia-500: #d946ef;
+  --p-blue-500: #3b82f6;
+  --p-yellow-500: #eab308;
+  --p-theme-vermelho: #ec0000;
+  --p-theme-laranja: #ff6200;
+  --p-theme-azul: #0057ff;
+  --p-theme-roxo: #820ad1;
+  --p-theme-grafite: #242424;
+  --p-theme-onix: #161616;
+  --p-theme-petroleo: #082741;
+  --p-theme-azul-profundo: #0066b3;
+}
+
+:root {
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-full: 999px;
+  --bg-page: #f1f5f9;
+  --bg-surface: #ffffff;
+  --bg-sheet: #ffffff;
+  --bg-elevated: #ffffff;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-on-accent: #ffffff;
+  --value-entrada: #059669;
+  --value-saida: #e11d48;
+  --value-neutro: #64748b;
+  --accent-default: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-subtle: #e0e7ff;
+  --border-default: #e2e8f0;
+  --border-subtle: #f1f5f9;
+  --divider: #f1f5f9;
+  --bar-track: #64748b33;
+  --bar-ok: #10b981;
+  --bar-warn: #f59e0b;
+  --bar-over: #f43f5e;
+  --categoria-01: #6366f1;
+  --categoria-02: #f59e0b;
+  --categoria-03: #14b8a6;
+  --categoria-04: #8b5cf6;
+  --categoria-05: #0ea5e9;
+  --categoria-06: #f97316;
+  --categoria-07: #ec4899;
+  --categoria-08: #84cc16;
+  --categoria-09: #06b6d4;
+  --categoria-10: #d946ef;
+  --categoria-11: #3b82f6;
+  --categoria-12: #eab308;
+  --recorte-assinatura: #d946ef;
+  --control-on: #10b981;
+  --overlay-scrim: #00000080;
+}
+
+:root[data-theme="dark"] {
+  --bg-page: #020617;
+  --bg-surface: #0f172a;
+  --bg-sheet: #0f172a;
+  --bg-elevated: #1e293b;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #64748b;
+  --text-on-accent: #ffffff;
+  --value-entrada: #34d399;
+  --value-saida: #fb7185;
+  --value-neutro: #94a3b8;
+  --accent-default: #6366f1;
+  --accent-hover: #818cf8;
+  --accent-subtle: #312e81;
+  --border-default: #334155;
+  --border-subtle: #1e293b;
+  --divider: #1e293b;
+  --bar-track: #64748b33;
+  --bar-ok: #34d399;
+  --bar-warn: #fbbf24;
+  --bar-over: #fb7185;
+  --categoria-01: #6366f1;
+  --categoria-02: #f59e0b;
+  --categoria-03: #14b8a6;
+  --categoria-04: #8b5cf6;
+  --categoria-05: #0ea5e9;
+  --categoria-06: #f97316;
+  --categoria-07: #ec4899;
+  --categoria-08: #84cc16;
+  --categoria-09: #06b6d4;
+  --categoria-10: #d946ef;
+  --categoria-11: #3b82f6;
+  --categoria-12: #eab308;
+  --recorte-assinatura: #e879f9;
+  --control-on: #34d399;
+  --overlay-scrim: #00000080;
+}
+
+/* Card/account themes — applied via data-card-theme on the entity element */
+[data-card-theme="vermelho"] { --theme-bg: #ec0000; --theme-text: #ffffff; }
+[data-card-theme="laranja"] { --theme-bg: #ff6200; --theme-text: #ffffff; }
+[data-card-theme="azul"] { --theme-bg: #0057ff; --theme-text: #ffffff; }
+[data-card-theme="roxo"] { --theme-bg: #820ad1; --theme-text: #ffffff; }
+[data-card-theme="grafite"] { --theme-bg: #242424; --theme-text: #ffffff; }
+[data-card-theme="onix"] { --theme-bg: #161616; --theme-text: #ffffff; }
+[data-card-theme="petroleo"] { --theme-bg: #082741; --theme-text: #ffffff; }
+[data-card-theme="azul-profundo"] { --theme-bg: #0066b3; --theme-text: #ffffff; }
+
+/* Typography — Inter scale. Apply via class, e.g. <span class="type-numeric"> */
+.type-display { font-family: Inter, system-ui, sans-serif; font-weight: 700; font-size: 32px; line-height: 110%; }
+.type-title { font-family: Inter, system-ui, sans-serif; font-weight: 600; font-size: 20px; line-height: 130%; }
+.type-body { font-family: Inter, system-ui, sans-serif; font-weight: 400; font-size: 16px; line-height: 145%; }
+.type-body-strong { font-family: Inter, system-ui, sans-serif; font-weight: 500; font-size: 16px; line-height: 145%; }
+.type-body-small { font-family: Inter, system-ui, sans-serif; font-weight: 500; font-size: 14px; line-height: 130%; }
+.type-body-small-strong { font-family: Inter, system-ui, sans-serif; font-weight: 600; font-size: 14px; line-height: 130%; }
+.type-label { font-family: Inter, system-ui, sans-serif; font-weight: 500; font-size: 13px; line-height: 130%; }
+.type-caption { font-family: Inter, system-ui, sans-serif; font-weight: 400; font-size: 12px; line-height: 130%; }
+.type-numeric { font-family: Inter, system-ui, sans-serif; font-weight: 600; font-size: 16px; line-height: 130%; }
+.type-micro { font-family: Inter, system-ui, sans-serif; font-weight: 500; font-size: 11px; line-height: 130%; }
