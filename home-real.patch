@@ -1,0 +1,914 @@
+From 31efa196171d43edcf5a439da53c0b017ac9b260 Mon Sep 17 00:00:00 2001
+From: Andrei Carvalho <andrei@meulivrocaixa.local>
+Date: Fri, 26 Jun 2026 22:55:23 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?Home=20real=20(=C2=A75.1):=20seletor=20de?=
+ =?UTF-8?q?=20m=C3=AAs=20+=20Tabs=20+=20Card=20de=20resumo=20+=20lista=20+?=
+ =?UTF-8?q?=20FAB,=20instanciando=20a=20biblioteca?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/screens/Home.tsx | 352 +++++++++++++++++++++++++++++++++++++------
+ 1 file changed, 305 insertions(+), 47 deletions(-)
+
+diff --git a/src/screens/Home.tsx b/src/screens/Home.tsx
+index a9cc9e1..21368a0 100644
+--- a/src/screens/Home.tsx
++++ b/src/screens/Home.tsx
+@@ -1,61 +1,319 @@
+-import { useEffect, useState } from 'react';
++import { useEffect, useMemo, useState } from 'react';
+ import { supabase } from '../lib/supabase';
+-import type { Conta } from '../types/db';
+-import { Botao } from '../components';
++import type { Conta, Cartao, Lancamento } from '../types/db';
++import {
++  Tabs,
++  type AbaId,
++  CardDeResumo,
++  LinhaDeLancamento,
++  LinhaDeFatura,
++  type FaseFatura,
++  CardDeEntidade,
++  FAB,
++  IconeChevronRight,
++} from '../components';
++
++/** Home real (§5.1). Compõe só a biblioteca de componentes.
++ *  O seletor de mês no topo controla todas as abas; o dia atual é só a
++ *  fronteira fato/projeção, não um corte no que aparece (mês inteiro). */
++
++const MESES = [
++  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
++  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
++];
++
++/** Recorta o mês [ano, mes(0-11)] de uma data YYYY-MM-DD sem fuso. */
++function noMes(dataISO: string, ano: number, mes: number): boolean {
++  const [a, m] = dataISO.split('-').map(Number);
++  return a === ano && m - 1 === mes;
++}
++
++/** Fase da fatura pelo dia de fechamento vs. hoje, dentro do mês exibido (§4.4). */
++function faseFatura(cartao: Cartao, ano: number, mes: number, hoje: Date): FaseFatura {
++  const ref = new Date(ano, mes, 1);
++  const mesAtual = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
++  if (ref < mesAtual) return 'fechada';
++  if (ref > mesAtual) return 'futura';
++  return hoje.getDate() >= cartao.dia_fechamento ? 'fechada' : 'aberta';
++}
+ 
+-/** Home provisória (scaffold). Será substituída pela Home real (§5.1).
+- *  Por ora prova que, autenticado, a RLS libera a leitura das contas. */
+ export function Home() {
++  const hoje = useMemo(() => new Date(), []);
++  const [ano, setAno] = useState(hoje.getFullYear());
++  const [mes, setMes] = useState(hoje.getMonth()); // 0-11
++  const [aba, setAba] = useState<AbaId>('lancamentos');
++
+   const [contas, setContas] = useState<Conta[]>([]);
++  const [cartoes, setCartoes] = useState<Cartao[]>([]);
++  const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
+   const [carregando, setCarregando] = useState(true);
++  const [erro, setErro] = useState<string | null>(null);
+ 
+   useEffect(() => {
+-    supabase
+-      .from('contas')
+-      .select('*')
+-      .order('criada_em', { ascending: true })
+-      .then(({ data }) => {
+-        setContas(data ?? []);
+-        setCarregando(false);
+-      });
++    let vivo = true;
++    setCarregando(true);
++    setErro(null);
++    Promise.all([
++      supabase.from('contas').select('*').is('arquivada_em', null).order('criada_em'),
++      supabase.from('cartoes').select('*').order('criado_em'),
++      supabase.from('lancamentos').select('*').order('data'),
++    ]).then(([rc, rk, rl]) => {
++      if (!vivo) return;
++      const e = rc.error || rk.error || rl.error;
++      if (e) setErro(e.message);
++      setContas(rc.data ?? []);
++      setCartoes(rk.data ?? []);
++      setLancamentos(rl.data ?? []);
++      setCarregando(false);
++    });
++    return () => { vivo = false; };
+   }, []);
+ 
++  const contaPorId = useMemo(
++    () => new Map(contas.map((c) => [c.id, c])),
++    [contas],
++  );
++
++  // Lançamentos do mês exibido, em conta-corrente, fora de cartão (§4.8: compra
++  // de cartão não aparece solta; entra pela linha da fatura).
++  const lancamentosDoMes = useMemo(
++    () => lancamentos.filter(
++      (l) => l.cartao_id == null && noMes(l.data, ano, mes),
++    ),
++    [lancamentos, ano, mes],
++  );
++
++  // Realizado por cartão no mês exibido (soma das compras com cartao_id).
++  const realizadoPorCartao = useMemo(() => {
++    const m = new Map<string, number>();
++    for (const l of lancamentos) {
++      if (l.cartao_id && noMes(l.data, ano, mes)) {
++        m.set(l.cartao_id, (m.get(l.cartao_id) ?? 0) + l.valor);
++      }
++    }
++    return m;
++  }, [lancamentos, ano, mes]);
++
++  // Totais do mês (§4.7). Saldo herdado virá do acumulado anterior — placeholder
++  // até a função de saldo contínuo entrar; por ora soma o mês exibido.
++  const { entradas, saidas } = useMemo(() => {
++    let e = 0, s = 0;
++    for (const l of lancamentosDoMes) {
++      if (l.tipo === 'entrada') e += l.valor;
++      else s += l.valor;
++    }
++    return { entradas: e, saidas: s };
++  }, [lancamentosDoMes]);
++  const herdado = 0; // TODO §4.7: saldo contínuo acumulado dos meses anteriores
++  const saldoMes = herdado + entradas - saidas;
++
++  function mudarMes(delta: number) {
++    const d = new Date(ano, mes + delta, 1);
++    setAno(d.getFullYear());
++    setMes(d.getMonth());
++  }
++
+   return (
+-    <main style={{ padding: 'var(--space-xl)', maxWidth: 480, margin: '0 auto' }}>
+-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+-        <h1 className="type-display">Meu Livro-Caixa</h1>
+-      </div>
+-      <p className="type-caption" style={{ color: 'var(--text-muted)' }}>
+-        Logado · {carregando ? '…' : `${contas.length} conta(s)`}
+-      </p>
++    <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100dvh', position: 'relative' }}>
++      {/* Seletor de mês — controla todas as abas (§5.1) */}
++      <header
++        style={{
++          display: 'flex',
++          alignItems: 'center',
++          justifyContent: 'center',
++          gap: 'var(--space-lg)',
++          padding: 'var(--space-lg)',
++        }}
++      >
++        <button
++          type="button"
++          aria-label="Mês anterior"
++          onClick={() => mudarMes(-1)}
++          style={{ border: 'none', background: 'transparent', color: 'var(--text-secondary)', display: 'inline-flex', transform: 'rotate(180deg)' }}
++        >
++          <IconeChevronRight />
++        </button>
++        <span className="type-body-strong" style={{ minWidth: 160, textAlign: 'center', textTransform: 'capitalize' }}>
++          {MESES[mes]} {ano}
++        </span>
++        <button
++          type="button"
++          aria-label="Próximo mês"
++          onClick={() => mudarMes(1)}
++          style={{ border: 'none', background: 'transparent', color: 'var(--text-secondary)', display: 'inline-flex' }}
++        >
++          <IconeChevronRight />
++        </button>
++      </header>
+ 
+-      <ul style={{ listStyle: 'none', marginTop: 'var(--space-xl)' }}>
+-        {contas.map((c) => (
+-          <li
+-            key={c.id}
+-            data-card-theme={c.tema ?? undefined}
+-            style={{
+-              display: 'flex',
+-              justifyContent: 'space-between',
+-              alignItems: 'center',
+-              padding: 'var(--space-md)',
+-              borderRadius: 'var(--radius-md)',
+-              marginBottom: 'var(--space-sm)',
+-              background: c.tema ? 'var(--theme-bg)' : 'var(--bg-elevated)',
+-              color: c.tema ? 'var(--theme-text)' : 'var(--text-primary)'
+-            }}
+-          >
+-            <span className="type-body-strong">{c.nome}</span>
+-            <span className="type-micro" style={{ opacity: 0.8 }}>{c.tipo}</span>
+-          </li>
+-        ))}
+-      </ul>
+-
+-      <div style={{ marginTop: 'var(--space-2xl)' }}>
+-        <Botao hierarquia="secondary" onClick={() => supabase.auth.signOut()}>
+-          Sair
+-        </Botao>
++      <div style={{ padding: '0 var(--space-lg)' }}>
++        <Tabs ativa={aba} onMudar={setAba} />
+       </div>
+-    </main>
++
++      <main style={{ padding: 'var(--space-lg)', paddingBottom: 'calc(96px + env(safe-area-inset-bottom))' }}>
++        {erro && (
++          <p className="type-caption" style={{ color: 'var(--value-saida)' }}>
++            Erro ao carregar: {erro}
++          </p>
++        )}
++        {carregando ? (
++          <p className="type-caption" style={{ color: 'var(--text-muted)' }}>Carregando…</p>
++        ) : (
++          <>
++            {aba === 'lancamentos' && (
++              <Lancamentos
++                entradas={entradas}
++                saidas={saidas}
++                saldoMes={saldoMes}
++                herdado={herdado}
++                lancamentos={lancamentosDoMes}
++                cartoes={cartoes}
++                contaPorId={contaPorId}
++                realizadoPorCartao={realizadoPorCartao}
++                fase={(k) => faseFatura(k, ano, mes, hoje)}
++              />
++            )}
++
++            {aba === 'contas' && (
++              <Entidades vazio="Nenhuma conta ativa.">
++                {contas.map((c) =>
++                  c.tipo === 'poupanca' ? (
++                    <CardDeEntidade
++                      key={c.id}
++                      tipo="poupanca"
++                      nome={c.nome}
++                      valor={0 /* TODO §4.7: saldo da conta */}
++                      tema={c.tema ?? undefined}
++                    />
++                  ) : (
++                    <CardDeEntidade
++                      key={c.id}
++                      tipo="conta"
++                      nome={c.nome}
++                      valor={0 /* TODO §4.7: saldo da conta */}
++                      tema={c.tema ?? undefined}
++                      entradas={0}
++                      saidas={0}
++                    />
++                  ),
++                )}
++              </Entidades>
++            )}
++
++            {aba === 'cartoes' && (
++              <Entidades vazio="Nenhum cartão cadastrado.">
++                {cartoes.map((k) => {
++                  const realizado = realizadoPorCartao.get(k.id) ?? 0;
++                  const pct = k.previsao_mensal > 0
++                    ? Math.round((realizado / k.previsao_mensal) * 100)
++                    : 0;
++                  return (
++                    <CardDeEntidade
++                      key={k.id}
++                      tipo="cartao"
++                      nome={k.nome}
++                      valor={realizado}
++                      tema={k.tema ?? undefined}
++                      realizado={realizado}
++                      previsao={k.previsao_mensal}
++                      legenda={`${pct}% da previsão · fecha dia ${k.dia_fechamento}`}
++                    />
++                  );
++                })}
++              </Entidades>
++            )}
++
++            {aba === 'relatorio' && (
++              <p className="type-caption" style={{ color: 'var(--text-muted)' }}>
++                Relatório — em construção (§5.5).
++              </p>
++            )}
++          </>
++        )}
++      </main>
++
++      <FAB onClick={() => { /* TODO: abrir bottom sheet de lançar (§5.2) */ }} />
++    </div>
++  );
++}
++
++/* ---------- Aba Lançamentos ---------- */
++
++function Lancamentos(props: {
++  entradas: number;
++  saidas: number;
++  saldoMes: number;
++  herdado: number;
++  lancamentos: Lancamento[];
++  cartoes: Cartao[];
++  contaPorId: Map<string, Conta>;
++  realizadoPorCartao: Map<string, number>;
++  fase: (k: Cartao) => FaseFatura;
++}) {
++  const { entradas, saidas, saldoMes, herdado, lancamentos, cartoes, contaPorId, realizadoPorCartao, fase } = props;
++  const vazio = lancamentos.length === 0 && cartoes.length === 0;
++
++  return (
++    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
++      <CardDeResumo entradas={entradas} saidas={saidas} saldoMes={saldoMes} herdado={herdado} />
++
++      {vazio ? (
++        <p className="type-caption" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-xl) 0' }}>
++          Nada neste mês ainda. Toque em + para lançar.
++        </p>
++      ) : (
++        <div
++          style={{
++            borderRadius: 'var(--radius-md)',
++            overflow: 'hidden',
++            background: 'var(--bg-surface)',
++            border: '1px solid var(--border-default)',
++            display: 'flex',
++            flexDirection: 'column',
++          }}
++        >
++          {lancamentos.map((l) => {
++            const conta = contaPorId.get(l.conta_id);
++            return (
++              <LinhaDeLancamento
++                key={l.id}
++                tipo={l.tipo}
++                descricao={l.descricao}
++                valor={l.tipo === 'saida' ? -l.valor : l.valor}
++                conta={conta ? { nome: conta.nome } : undefined}
++                onEditar={() => { /* TODO: editar lançamento (§5.7) */ }}
++              />
++            );
++          })}
++
++          {cartoes.map((k) => (
++            <LinhaDeFatura
++              key={k.id}
++              titulo={k.nome}
++              tagTexto={`Cartão · fecha dia ${k.dia_fechamento}`}
++              fase={fase(k)}
++              realizado={realizadoPorCartao.get(k.id) ?? 0}
++              previsao={k.previsao_mensal}
++              onAbrir={() => { /* TODO: drill-down do cartão (§5.3) */ }}
++            />
++          ))}
++        </div>
++      )}
++    </div>
+   );
+ }
++
++/* ---------- Abas Contas / Cartões ---------- */
++
++function Entidades({ children, vazio }: { children: React.ReactNode; vazio: string }) {
++  const arr = Array.isArray(children) ? children : [children];
++  const temItens = arr.some(Boolean) && arr.flat().filter(Boolean).length > 0;
++  if (!temItens) {
++    return (
++      <p className="type-caption" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-xl) 0' }}>
++        {vazio}
++      </p>
++    );
++  }
++  return <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>{children}</div>;
++}
+-- 
+2.43.0
+
+
+From 7e098f613cd7e954cd58a791299cec4215f60c41 Mon Sep 17 00:00:00 2001
+From: Andrei Carvalho <andrei@meulivrocaixa.local>
+Date: Fri, 26 Jun 2026 23:11:10 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?Home=20real=20(=C2=A75.1):=20estrutura=20fi?=
+ =?UTF-8?q?el=20ao=20Figma=20=E2=80=94=20TopBar=20+=20Card=20de=20resumo?=
+ =?UTF-8?q?=20fixo=20acima=20das=20Tabs=20+=20grupos=20por=20dia=20(Cabe?=
+ =?UTF-8?q?=C3=A7alho/Saldo=20do=20dia)=20+=20FAB?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/components/CabecalhoDeDia.tsx |  34 ++++
+ src/components/SaldoDoDia.tsx     |  34 ++++
+ src/components/index.ts           |   2 +
+ src/screens/Home.tsx              | 281 +++++++++++++++++-------------
+ 4 files changed, 229 insertions(+), 122 deletions(-)
+ create mode 100644 src/components/CabecalhoDeDia.tsx
+ create mode 100644 src/components/SaldoDoDia.tsx
+
+diff --git a/src/components/CabecalhoDeDia.tsx b/src/components/CabecalhoDeDia.tsx
+new file mode 100644
+index 0000000..9186f46
+--- /dev/null
++++ b/src/components/CabecalhoDeDia.tsx
+@@ -0,0 +1,34 @@
++/**
++ * Cabeçalho de dia — §5.1, Figma 2013:16.
++ * Topo de cada grupo de lançamentos de um dia. Layout horizontal,
++ * espaço-entre: [ data ] … [ dia da semana ]. Sem fundo (vive sobre o
++ * fundo da tela, fora do card branco do grupo).
++ */
++
++type Props = {
++  /** Ex.: "23 jun". */
++  data: string;
++  /** Ex.: "Segunda-feira". */
++  diaSemana: string;
++};
++
++export function CabecalhoDeDia({ data, diaSemana }: Props) {
++  return (
++    <div
++      style={{
++        display: 'flex',
++        alignItems: 'center',
++        justifyContent: 'space-between',
++        padding: '10px var(--space-lg)',
++        width: '100%',
++      }}
++    >
++      <span className="type-body-small-strong" style={{ color: 'var(--text-primary)' }}>
++        {data}
++      </span>
++      <span className="type-label" style={{ color: 'var(--text-muted)' }}>
++        {diaSemana}
++      </span>
++    </div>
++  );
++}
+diff --git a/src/components/SaldoDoDia.tsx b/src/components/SaldoDoDia.tsx
+new file mode 100644
+index 0000000..b0f02a3
+--- /dev/null
++++ b/src/components/SaldoDoDia.tsx
+@@ -0,0 +1,34 @@
++import { formatarBR } from '../lib/formato';
++
++/**
++ * Saldo do dia — §5.1, Figma 2013:19.
++ * Rodapé de cada grupo de dia: o saldo acumulado até o fim daquele dia
++ * (o saldo é legível linha a linha, §5.1). Layout horizontal,
++ * espaço-entre: [ rótulo ] … [ saldo ]. Sem fundo (sobre o fundo da tela).
++ */
++
++type Props = {
++  /** Saldo acumulado até o fim do dia. */
++  saldo: number;
++};
++
++export function SaldoDoDia({ saldo }: Props) {
++  return (
++    <div
++      style={{
++        display: 'flex',
++        alignItems: 'center',
++        justifyContent: 'space-between',
++        padding: 'var(--space-sm) var(--space-lg)',
++        width: '100%',
++      }}
++    >
++      <span className="type-label" style={{ color: 'var(--text-muted)' }}>
++        Saldo do dia
++      </span>
++      <span className="type-body-small-strong" style={{ color: 'var(--text-secondary)' }}>
++        {formatarBR(saldo, { prefixo: true })}
++      </span>
++    </div>
++  );
++}
+diff --git a/src/components/index.ts b/src/components/index.ts
+index fc82104..d981b3e 100644
+--- a/src/components/index.ts
++++ b/src/components/index.ts
+@@ -15,6 +15,8 @@ export type { FaseBarra } from './BarraDePrevisao';
+ export { LinhaDeLancamento } from './LinhaDeLancamento';
+ export { LinhaDeFatura } from './LinhaDeFatura';
+ export type { FaseFatura } from './LinhaDeFatura';
++export { CabecalhoDeDia } from './CabecalhoDeDia';
++export { SaldoDoDia } from './SaldoDoDia';
+ export { CardDeResumo } from './CardDeResumo';
+ export { CardDeEntidade } from './CardDeEntidade';
+ export { FAB } from './FAB';
+diff --git a/src/screens/Home.tsx b/src/screens/Home.tsx
+index 21368a0..0148e81 100644
+--- a/src/screens/Home.tsx
++++ b/src/screens/Home.tsx
+@@ -5,6 +5,8 @@ import {
+   Tabs,
+   type AbaId,
+   CardDeResumo,
++  CabecalhoDeDia,
++  SaldoDoDia,
+   LinhaDeLancamento,
+   LinhaDeFatura,
+   type FaseFatura,
+@@ -14,18 +16,29 @@ import {
+ } from '../components';
+ 
+ /** Home real (§5.1). Compõe só a biblioteca de componentes.
+- *  O seletor de mês no topo controla todas as abas; o dia atual é só a
+- *  fronteira fato/projeção, não um corte no que aparece (mês inteiro). */
++ *  Estrutura do Figma (2009:11): TopBar (menu + nav de mês) → Card de resumo
++ *  (fixo, acima das tabs) → Tabs → conteúdo. Na aba Lançamentos os itens são
++ *  AGRUPADOS POR DIA: card branco com Cabeçalho de dia + linhas + Saldo do dia.
++ *  O seletor de mês controla todas as abas; mês-calendário inteiro (§5.1). */
+ 
+ const MESES = [
+   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+ ];
++const MESES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
++const DIAS_SEMANA = [
++  'Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira',
++  'Quinta-feira', 'Sexta-feira', 'Sábado',
++];
+ 
+-/** Recorta o mês [ano, mes(0-11)] de uma data YYYY-MM-DD sem fuso. */
+-function noMes(dataISO: string, ano: number, mes: number): boolean {
+-  const [a, m] = dataISO.split('-').map(Number);
+-  return a === ano && m - 1 === mes;
++/** Parte uma data YYYY-MM-DD em [ano, mes(0-11), dia] sem fuso. */
++function parteData(iso: string): [number, number, number] {
++  const [a, m, d] = iso.split('-').map(Number);
++  return [a, m - 1, d];
++}
++function noMes(iso: string, ano: number, mes: number): boolean {
++  const [a, m] = parteData(iso);
++  return a === ano && m === mes;
+ }
+ 
+ /** Fase da fatura pelo dia de fechamento vs. hoje, dentro do mês exibido (§4.4). */
+@@ -69,21 +82,16 @@ export function Home() {
+     return () => { vivo = false; };
+   }, []);
+ 
+-  const contaPorId = useMemo(
+-    () => new Map(contas.map((c) => [c.id, c])),
+-    [contas],
+-  );
++  const contaPorId = useMemo(() => new Map(contas.map((c) => [c.id, c])), [contas]);
+ 
+   // Lançamentos do mês exibido, em conta-corrente, fora de cartão (§4.8: compra
+   // de cartão não aparece solta; entra pela linha da fatura).
+   const lancamentosDoMes = useMemo(
+-    () => lancamentos.filter(
+-      (l) => l.cartao_id == null && noMes(l.data, ano, mes),
+-    ),
++    () => lancamentos.filter((l) => l.cartao_id == null && noMes(l.data, ano, mes)),
+     [lancamentos, ano, mes],
+   );
+ 
+-  // Realizado por cartão no mês exibido (soma das compras com cartao_id).
++  // Realizado por cartão no mês exibido.
+   const realizadoPorCartao = useMemo(() => {
+     const m = new Map<string, number>();
+     for (const l of lancamentos) {
+@@ -94,13 +102,11 @@ export function Home() {
+     return m;
+   }, [lancamentos, ano, mes]);
+ 
+-  // Totais do mês (§4.7). Saldo herdado virá do acumulado anterior — placeholder
+-  // até a função de saldo contínuo entrar; por ora soma o mês exibido.
++  // Totais do mês (§4.7). Herdado virá do saldo contínuo; por ora 0.
+   const { entradas, saidas } = useMemo(() => {
+     let e = 0, s = 0;
+     for (const l of lancamentosDoMes) {
+-      if (l.tipo === 'entrada') e += l.valor;
+-      else s += l.valor;
++      if (l.tipo === 'entrada') e += l.valor; else s += l.valor;
+     }
+     return { entradas: e, saidas: s };
+   }, [lancamentosDoMes]);
+@@ -115,46 +121,52 @@ export function Home() {
+ 
+   return (
+     <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100dvh', position: 'relative' }}>
+-      {/* Seletor de mês — controla todas as abas (§5.1) */}
++      {/* ── TopBar: menu + navegação de mês (Figma TopBar) ── */}
+       <header
+         style={{
+           display: 'flex',
+           alignItems: 'center',
+-          justifyContent: 'center',
+-          gap: 'var(--space-lg)',
+-          padding: 'var(--space-lg)',
++          justifyContent: 'space-between',
++          padding: 'var(--space-md) var(--space-lg)',
+         }}
+       >
+         <button
+           type="button"
+-          aria-label="Mês anterior"
+-          onClick={() => mudarMes(-1)}
+-          style={{ border: 'none', background: 'transparent', color: 'var(--text-secondary)', display: 'inline-flex', transform: 'rotate(180deg)' }}
++          aria-label="Menu"
++          onClick={() => { /* TODO: abrir drawer (§5.8) */ }}
++          style={botaoIcone}
+         >
+-          <IconeChevronRight />
+-        </button>
+-        <span className="type-body-strong" style={{ minWidth: 160, textAlign: 'center', textTransform: 'capitalize' }}>
+-          {MESES[mes]} {ano}
+-        </span>
+-        <button
+-          type="button"
+-          aria-label="Próximo mês"
+-          onClick={() => mudarMes(1)}
+-          style={{ border: 'none', background: 'transparent', color: 'var(--text-secondary)', display: 'inline-flex' }}
+-        >
+-          <IconeChevronRight />
++          <span aria-hidden style={{ fontSize: 20, lineHeight: 1 }}>☰</span>
+         </button>
++
++        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
++          <button type="button" aria-label="Mês anterior" onClick={() => mudarMes(-1)} style={{ ...botaoIcone, transform: 'rotate(180deg)' }}>
++            <IconeChevronRight />
++          </button>
++          <span className="type-body-strong" style={{ minWidth: 130, textAlign: 'center', textTransform: 'capitalize' }}>
++            {MESES[mes]} {ano}
++          </span>
++          <button type="button" aria-label="Próximo mês" onClick={() => mudarMes(1)} style={botaoIcone}>
++            <IconeChevronRight />
++          </button>
++        </div>
++
++        <span style={{ width: 40 }} aria-hidden />
+       </header>
+ 
++      {/* ── Card de resumo: FIXO no topo, acima das tabs (§5.1) ── */}
+       <div style={{ padding: '0 var(--space-lg)' }}>
++        <CardDeResumo entradas={entradas} saidas={saidas} saldoMes={saldoMes} herdado={herdado} />
++      </div>
++
++      {/* ── Tabs ── */}
++      <div style={{ padding: 'var(--space-md) var(--space-lg) 0' }}>
+         <Tabs ativa={aba} onMudar={setAba} />
+       </div>
+ 
+       <main style={{ padding: 'var(--space-lg)', paddingBottom: 'calc(96px + env(safe-area-inset-bottom))' }}>
+         {erro && (
+-          <p className="type-caption" style={{ color: 'var(--value-saida)' }}>
+-            Erro ao carregar: {erro}
+-          </p>
++          <p className="type-caption" style={{ color: 'var(--value-saida)' }}>Erro ao carregar: {erro}</p>
+         )}
+         {carregando ? (
+           <p className="type-caption" style={{ color: 'var(--text-muted)' }}>Carregando…</p>
+@@ -162,10 +174,8 @@ export function Home() {
+           <>
+             {aba === 'lancamentos' && (
+               <Lancamentos
+-                entradas={entradas}
+-                saidas={saidas}
+-                saldoMes={saldoMes}
+-                herdado={herdado}
++                ano={ano}
++                mes={mes}
+                 lancamentos={lancamentosDoMes}
+                 cartoes={cartoes}
+                 contaPorId={contaPorId}
+@@ -178,23 +188,9 @@ export function Home() {
+               <Entidades vazio="Nenhuma conta ativa.">
+                 {contas.map((c) =>
+                   c.tipo === 'poupanca' ? (
+-                    <CardDeEntidade
+-                      key={c.id}
+-                      tipo="poupanca"
+-                      nome={c.nome}
+-                      valor={0 /* TODO §4.7: saldo da conta */}
+-                      tema={c.tema ?? undefined}
+-                    />
++                    <CardDeEntidade key={c.id} tipo="poupanca" nome={c.nome} valor={0 /* TODO §4.7 */} tema={c.tema ?? undefined} />
+                   ) : (
+-                    <CardDeEntidade
+-                      key={c.id}
+-                      tipo="conta"
+-                      nome={c.nome}
+-                      valor={0 /* TODO §4.7: saldo da conta */}
+-                      tema={c.tema ?? undefined}
+-                      entradas={0}
+-                      saidas={0}
+-                    />
++                    <CardDeEntidade key={c.id} tipo="conta" nome={c.nome} valor={0 /* TODO §4.7 */} tema={c.tema ?? undefined} entradas={0} saidas={0} />
+                   ),
+                 )}
+               </Entidades>
+@@ -204,9 +200,7 @@ export function Home() {
+               <Entidades vazio="Nenhum cartão cadastrado.">
+                 {cartoes.map((k) => {
+                   const realizado = realizadoPorCartao.get(k.id) ?? 0;
+-                  const pct = k.previsao_mensal > 0
+-                    ? Math.round((realizado / k.previsao_mensal) * 100)
+-                    : 0;
++                  const pct = k.previsao_mensal > 0 ? Math.round((realizado / k.previsao_mensal) * 100) : 0;
+                   return (
+                     <CardDeEntidade
+                       key={k.id}
+@@ -224,91 +218,134 @@ export function Home() {
+             )}
+ 
+             {aba === 'relatorio' && (
+-              <p className="type-caption" style={{ color: 'var(--text-muted)' }}>
+-                Relatório — em construção (§5.5).
+-              </p>
++              <p className="type-caption" style={{ color: 'var(--text-muted)' }}>Relatório — em construção (§5.5).</p>
+             )}
+           </>
+         )}
+       </main>
+ 
+-      <FAB onClick={() => { /* TODO: abrir bottom sheet de lançar (§5.2) */ }} />
++      <FAB onClick={() => { /* TODO: bottom sheet de lançar (§5.2) */ }} />
+     </div>
+   );
+ }
+ 
+-/* ---------- Aba Lançamentos ---------- */
++const botaoIcone: React.CSSProperties = {
++  border: 'none',
++  background: 'transparent',
++  color: 'var(--text-secondary)',
++  display: 'inline-flex',
++  alignItems: 'center',
++  justifyContent: 'center',
++  width: 40,
++  height: 40,
++};
++
++/* ───────── Aba Lançamentos: grupos por dia ───────── */
++
++type ItemDia =
++  | { kind: 'lancamento'; l: Lancamento }
++  | { kind: 'fatura'; k: Cartao };
+ 
+ function Lancamentos(props: {
+-  entradas: number;
+-  saidas: number;
+-  saldoMes: number;
+-  herdado: number;
++  ano: number;
++  mes: number;
+   lancamentos: Lancamento[];
+   cartoes: Cartao[];
+   contaPorId: Map<string, Conta>;
+   realizadoPorCartao: Map<string, number>;
+   fase: (k: Cartao) => FaseFatura;
+ }) {
+-  const { entradas, saidas, saldoMes, herdado, lancamentos, cartoes, contaPorId, realizadoPorCartao, fase } = props;
+-  const vazio = lancamentos.length === 0 && cartoes.length === 0;
++  const { ano, mes, lancamentos, cartoes, contaPorId, realizadoPorCartao, fase } = props;
++
++  // Agrupa por dia. A fatura entra no dia do pagamento (fluxo de caixa, §4.8);
++  // por ora ancora no dia_pagamento dentro do mês exibido.
++  const grupos = useMemo(() => {
++    const porDia = new Map<number, ItemDia[]>();
++    for (const l of lancamentos) {
++      const [, , dia] = parteData(l.data);
++      (porDia.get(dia) ?? porDia.set(dia, []).get(dia)!).push({ kind: 'lancamento', l });
++    }
++    for (const k of cartoes) {
++      const dia = Math.min(k.dia_pagamento, 28); // clamp defensivo; §4.1 trata borda
++      (porDia.get(dia) ?? porDia.set(dia, []).get(dia)!).push({ kind: 'fatura', k });
++    }
++    // Saldo acumulado dia a dia (dentro do mês; herdado=0 por ora, §4.7).
++    let acc = 0;
++    return [...porDia.keys()]
++      .sort((a, b) => a - b)
++      .map((dia) => {
++        const itens = porDia.get(dia)!;
++        for (const it of itens) {
++          if (it.kind === 'lancamento') acc += it.l.tipo === 'entrada' ? it.l.valor : -it.l.valor;
++          else acc -= realizadoPorCartao.get(it.k.id) ?? 0; // fatura sai da conta no pagamento
++        }
++        return { dia, itens, saldoAcumulado: acc };
++      });
++  }, [lancamentos, cartoes, realizadoPorCartao]);
++
++  if (grupos.length === 0) {
++    return (
++      <p className="type-caption" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-xl) 0' }}>
++        Nada neste mês ainda. Toque em + para lançar.
++      </p>
++    );
++  }
+ 
+   return (
+     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+-      <CardDeResumo entradas={entradas} saidas={saidas} saldoMes={saldoMes} herdado={herdado} />
+-
+-      {vazio ? (
+-        <p className="type-caption" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-xl) 0' }}>
+-          Nada neste mês ainda. Toque em + para lançar.
+-        </p>
+-      ) : (
+-        <div
+-          style={{
+-            borderRadius: 'var(--radius-md)',
+-            overflow: 'hidden',
+-            background: 'var(--bg-surface)',
+-            border: '1px solid var(--border-default)',
+-            display: 'flex',
+-            flexDirection: 'column',
+-          }}
+-        >
+-          {lancamentos.map((l) => {
+-            const conta = contaPorId.get(l.conta_id);
+-            return (
+-              <LinhaDeLancamento
+-                key={l.id}
+-                tipo={l.tipo}
+-                descricao={l.descricao}
+-                valor={l.tipo === 'saida' ? -l.valor : l.valor}
+-                conta={conta ? { nome: conta.nome } : undefined}
+-                onEditar={() => { /* TODO: editar lançamento (§5.7) */ }}
+-              />
+-            );
+-          })}
+-
+-          {cartoes.map((k) => (
+-            <LinhaDeFatura
+-              key={k.id}
+-              titulo={k.nome}
+-              tagTexto={`Cartão · fecha dia ${k.dia_fechamento}`}
+-              fase={fase(k)}
+-              realizado={realizadoPorCartao.get(k.id) ?? 0}
+-              previsao={k.previsao_mensal}
+-              onAbrir={() => { /* TODO: drill-down do cartão (§5.3) */ }}
+-            />
+-          ))}
+-        </div>
+-      )}
++      {grupos.map(({ dia, itens, saldoAcumulado }) => {
++        const d = new Date(ano, mes, dia);
++        return (
++          <div key={dia} style={{ display: 'flex', flexDirection: 'column' }}>
++            <CabecalhoDeDia data={`${dia} ${MESES_CURTO[mes]}`} diaSemana={DIAS_SEMANA[d.getDay()]} />
++
++            <div
++              style={{
++                borderRadius: 'var(--radius-md)',
++                overflow: 'hidden',
++                background: 'var(--bg-surface)',
++                border: '1px solid var(--border-default)',
++                display: 'flex',
++                flexDirection: 'column',
++              }}
++            >
++              {itens.map((it, i) =>
++                it.kind === 'lancamento' ? (
++                  <LinhaDeLancamento
++                    key={it.l.id}
++                    tipo={it.l.tipo}
++                    descricao={it.l.descricao}
++                    valor={it.l.tipo === 'saida' ? -it.l.valor : it.l.valor}
++                    conta={(() => { const c = contaPorId.get(it.l.conta_id); return c ? { nome: c.nome } : undefined; })()}
++                    onEditar={() => { /* TODO: editar (§5.7) */ }}
++                  />
++                ) : (
++                  <LinhaDeFatura
++                    key={`fat-${it.k.id}-${i}`}
++                    titulo={it.k.nome}
++                    tagTexto={`Cartão · fecha dia ${it.k.dia_fechamento}`}
++                    fase={fase(it.k)}
++                    realizado={realizadoPorCartao.get(it.k.id) ?? 0}
++                    previsao={it.k.previsao_mensal}
++                    onAbrir={() => { /* TODO: drill-down (§5.3) */ }}
++                  />
++                ),
++              )}
++            </div>
++
++            <SaldoDoDia saldo={saldoAcumulado} />
++          </div>
++        );
++      })}
+     </div>
+   );
+ }
+ 
+-/* ---------- Abas Contas / Cartões ---------- */
++/* ───────── Abas Contas / Cartões ───────── */
+ 
+ function Entidades({ children, vazio }: { children: React.ReactNode; vazio: string }) {
+-  const arr = Array.isArray(children) ? children : [children];
+-  const temItens = arr.some(Boolean) && arr.flat().filter(Boolean).length > 0;
+-  if (!temItens) {
++  const arr = (Array.isArray(children) ? children : [children]).flat().filter(Boolean);
++  if (arr.length === 0) {
+     return (
+       <p className="type-caption" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-xl) 0' }}>
+         {vazio}
+-- 
+2.43.0
+
