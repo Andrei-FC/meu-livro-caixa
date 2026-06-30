@@ -21,6 +21,24 @@ export function IconeChevronRight({ tamanho = 20 }: IconeProps) {
   );
 }
 
+export function IconeChevronLeft({ tamanho = 20 }: IconeProps) {
+  return (
+    <svg width={tamanho} height={tamanho} viewBox="0 0 20 20" fill="none" aria-hidden>
+      <path fillRule="evenodd" clipRule="evenodd" d="M12.7071 5.29289C13.0976 5.68342 13.0976 6.31658 12.7071 6.70711L9.41421 10L12.7071 13.2929C13.0976 13.6834 13.0976 14.3166 12.7071 14.7071C12.3166 15.0976 11.6834 15.0976 11.2929 14.7071L7.29289 10.7071C6.90237 10.3166 6.90237 9.68342 7.29289 9.29289L11.2929 5.29289C11.6834 4.90237 12.3166 4.90237 12.7071 5.29289Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function IconeMenu({ tamanho = 22 }: IconeProps) {
+  return (
+    <svg width={tamanho} height={tamanho} viewBox="0 0 20 20" fill="none" aria-hidden>
+      <path fillRule="evenodd" clipRule="evenodd" d="M3 5C3 4.44772 3.44772 4 4 4H16C16.5523 4 17 4.44772 17 5C17 5.55228 16.5523 6 16 6H4C3.44772 6 3 5.55228 3 5Z" fill="currentColor" />
+      <path fillRule="evenodd" clipRule="evenodd" d="M3 10C3 9.44772 3.44772 9 4 9H16C16.5523 9 17 9.44772 17 10C17 10.5523 16.5523 11 16 11H4C3.44772 11 3 10.5523 3 10Z" fill="currentColor" />
+      <path fillRule="evenodd" clipRule="evenodd" d="M3 15C3 14.4477 3.44772 14 4 14H16C16.5523 14 17 14.4477 17 15C17 15.5523 16.5523 16 16 16H4C3.44772 16 3 15.5523 3 15Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function IconePencil({ tamanho = 20 }: IconeProps) {
   return (
     <svg width={tamanho} height={tamanho} viewBox="0 0 20 20" fill="none" aria-hidden>

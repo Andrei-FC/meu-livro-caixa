@@ -12,7 +12,7 @@ import {
   type FaseFatura,
   CardDeEntidade,
   FAB,
-  IconeChevronRight,
+  Header,
 } from '../components';
 
 /** Home real (§5.1). Compõe só a biblioteca de componentes.
@@ -121,38 +121,13 @@ export function Home() {
 
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100dvh', position: 'relative' }}>
-      {/* ── TopBar: menu + navegação de mês (Figma TopBar) ── */}
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: 'var(--space-md) var(--space-lg)',
-        }}
-      >
-        <button
-          type="button"
-          aria-label="Menu"
-          onClick={() => { /* TODO: abrir drawer (§5.8) */ }}
-          style={botaoIcone}
-        >
-          <span aria-hidden style={{ fontSize: 20, lineHeight: 1 }}>☰</span>
-        </button>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)' }}>
-          <button type="button" aria-label="Mês anterior" onClick={() => mudarMes(-1)} style={{ ...botaoIcone, transform: 'rotate(180deg)' }}>
-            <IconeChevronRight />
-          </button>
-          <span className="type-body-strong" style={{ minWidth: 130, textAlign: 'center', textTransform: 'capitalize' }}>
-            {MESES[mes]} {ano}
-          </span>
-          <button type="button" aria-label="Próximo mês" onClick={() => mudarMes(1)} style={botaoIcone}>
-            <IconeChevronRight />
-          </button>
-        </div>
-
-        <span style={{ width: 40 }} aria-hidden />
-      </header>
+      {/* ── Header: menu + navegação de mês (§5.1, Figma 2221:992) ── */}
+      <Header
+        mesAno={`${MESES[mes]} ${ano}`}
+        onMenu={() => { /* TODO: abrir drawer (§5.8) */ }}
+        onAnterior={() => mudarMes(-1)}
+        onProximo={() => mudarMes(1)}
+      />
 
       {/* ── Card de resumo: FIXO no topo, acima das tabs (§5.1) ── */}
       <div style={{ padding: '0 var(--space-lg)' }}>
@@ -228,17 +203,6 @@ export function Home() {
     </div>
   );
 }
-
-const botaoIcone: React.CSSProperties = {
-  border: 'none',
-  background: 'transparent',
-  color: 'var(--text-secondary)',
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 40,
-  height: 40,
-};
 
 /* ───────── Aba Lançamentos: grupos por dia ───────── */
 
