@@ -8,6 +8,9 @@
  * (text/muted na linha, theme/text no card, text/on-accent no FAB).
  */
 
+// Logos de banco/bandeira (família separada, biblioteca fixa §4.9).
+export * from './bancos';
+
 type IconeProps = {
   /** Lado do quadrado em px. Default = tamanho nativo do ícone no Figma. */
   tamanho?: number;
