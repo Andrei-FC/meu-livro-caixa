@@ -1,6 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Conta, Cartao, Lancamento } from '../types/db';
+import {
+  lancamentosNoMes,
+  parteData,
+  type OcorrenciaLancamento,
+} from '../lib/recorrencia';
 import {
   Tabs,
   type AbaId,
@@ -13,6 +18,7 @@ import {
   CardDeEntidade,
   FAB,
   Header,
+  LancarSheet,
 } from '../components';
 
 /** Home real (§5.1). Compõe só a biblioteca de componentes.
@@ -30,16 +36,6 @@ const DIAS_SEMANA = [
   'Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira',
   'Quinta-feira', 'Sexta-feira', 'Sábado',
 ];
-
-/** Parte uma data YYYY-MM-DD em [ano, mes(0-11), dia] sem fuso. */
-function parteData(iso: string): [number, number, number] {
-  const [a, m, d] = iso.split('-').map(Number);
-  return [a, m - 1, d];
-}
-function noMes(iso: string, ano: number, mes: number): boolean {
-  const [a, m] = parteData(iso);
-  return a === ano && m === mes;
-}
 
 /** Fase da fatura pelo dia de fechamento vs. hoje, dentro do mês exibido (§4.4). */
 function faseFatura(cartao: Cartao, ano: number, mes: number, hoje: Date): FaseFatura {
@@ -61,17 +57,15 @@ export function Home() {
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
+  const [sheetAberto, setSheetAberto] = useState(false);
 
-  useEffect(() => {
-    let vivo = true;
-    setCarregando(true);
+  const carregar = useCallback(() => {
     setErro(null);
-    Promise.all([
+    return Promise.all([
       supabase.from('contas').select('*').is('arquivada_em', null).order('criada_em'),
       supabase.from('cartoes').select('*').order('criado_em'),
       supabase.from('lancamentos').select('*').order('data'),
     ]).then(([rc, rk, rl]) => {
-      if (!vivo) return;
       const e = rc.error || rk.error || rl.error;
       if (e) setErro(e.message);
       setContas(rc.data ?? []);
@@ -79,37 +73,59 @@ export function Home() {
       setLancamentos(rl.data ?? []);
       setCarregando(false);
     });
-    return () => { vivo = false; };
   }, []);
+
+  useEffect(() => {
+    setCarregando(true);
+    carregar();
+  }, [carregar]);
 
   const contaPorId = useMemo(() => new Map(contas.map((c) => [c.id, c])), [contas]);
 
-  // Lançamentos do mês exibido, em conta-corrente, fora de cartão (§4.8: compra
-  // de cartão não aparece solta; entra pela linha da fatura).
-  const lancamentosDoMes = useMemo(
-    () => lancamentos.filter((l) => l.cartao_id == null && noMes(l.data, ano, mes)),
-    [lancamentos, ano, mes],
+  // Descrições já usadas, para o autocomplete do Lançar (§4.6). Únicas,
+  // preservando a forma original mais recente de cada categoria.
+  const historicoDescricoes = useMemo(() => {
+    const vistas = new Set<string>();
+    const lista: string[] = [];
+    for (const l of lancamentos) {
+      const chave = l.descricao.trim().toLowerCase();
+      if (chave && !vistas.has(chave)) { vistas.add(chave); lista.push(l.descricao.trim()); }
+    }
+    return lista;
+  }, [lancamentos]);
+
+  // Ocorrências do mês exibido, materializadas a partir das regras (§4.1).
+  // O motor expande parcelas/recorrências; o passado e o futuro (até o
+  // horizonte) saem daqui, não de um filtro por data crua.
+  const ocorrenciasDoMes = useMemo(
+    () => lancamentosNoMes(lancamentos, ano, mes, hoje),
+    [lancamentos, ano, mes, hoje],
   );
 
-  // Realizado por cartão no mês exibido.
+  // Da lista do mês saem as ocorrências em conta-corrente, fora de cartão
+  // (§4.8: compra de cartão não aparece solta; entra pela linha da fatura).
+  const ocorrenciasLista = useMemo(
+    () => ocorrenciasDoMes.filter((o) => o.cartao_id == null),
+    [ocorrenciasDoMes],
+  );
+
+  // Realizado por cartão no mês exibido (soma das ocorrências com cartao_id).
   const realizadoPorCartao = useMemo(() => {
     const m = new Map<string, number>();
-    for (const l of lancamentos) {
-      if (l.cartao_id && noMes(l.data, ano, mes)) {
-        m.set(l.cartao_id, (m.get(l.cartao_id) ?? 0) + l.valor);
-      }
+    for (const o of ocorrenciasDoMes) {
+      if (o.cartao_id) m.set(o.cartao_id, (m.get(o.cartao_id) ?? 0) + o.valor);
     }
     return m;
-  }, [lancamentos, ano, mes]);
+  }, [ocorrenciasDoMes]);
 
   // Totais do mês (§4.7). Herdado virá do saldo contínuo; por ora 0.
   const { entradas, saidas } = useMemo(() => {
     let e = 0, s = 0;
-    for (const l of lancamentosDoMes) {
-      if (l.tipo === 'entrada') e += l.valor; else s += l.valor;
+    for (const o of ocorrenciasLista) {
+      if (o.tipo === 'entrada') e += o.valor; else s += o.valor;
     }
     return { entradas: e, saidas: s };
-  }, [lancamentosDoMes]);
+  }, [ocorrenciasLista]);
   const herdado = 0; // TODO §4.7: saldo contínuo acumulado dos meses anteriores
   const saldoMes = herdado + entradas - saidas;
 
@@ -151,7 +167,7 @@ export function Home() {
               <Lancamentos
                 ano={ano}
                 mes={mes}
-                lancamentos={lancamentosDoMes}
+                ocorrencias={ocorrenciasLista}
                 cartoes={cartoes}
                 contaPorId={contaPorId}
                 realizadoPorCartao={realizadoPorCartao}
@@ -199,7 +215,16 @@ export function Home() {
         )}
       </main>
 
-      <FAB onClick={() => { /* TODO: bottom sheet de lançar (§5.2) */ }} />
+      <FAB onClick={() => setSheetAberto(true)} />
+
+      <LancarSheet
+        aberto={sheetAberto}
+        contas={contas}
+        cartoes={cartoes}
+        historicoDescricoes={historicoDescricoes}
+        onFechar={() => setSheetAberto(false)}
+        onSalvou={() => { carregar(); }}
+      />
     </div>
   );
 }
@@ -207,27 +232,28 @@ export function Home() {
 /* ───────── Aba Lançamentos: grupos por dia ───────── */
 
 type ItemDia =
-  | { kind: 'lancamento'; l: Lancamento }
+  | { kind: 'lancamento'; o: OcorrenciaLancamento }
   | { kind: 'fatura'; k: Cartao };
 
 function Lancamentos(props: {
   ano: number;
   mes: number;
-  lancamentos: Lancamento[];
+  ocorrencias: OcorrenciaLancamento[];
   cartoes: Cartao[];
   contaPorId: Map<string, Conta>;
   realizadoPorCartao: Map<string, number>;
   fase: (k: Cartao) => FaseFatura;
 }) {
-  const { ano, mes, lancamentos, cartoes, contaPorId, realizadoPorCartao, fase } = props;
+  const { ano, mes, ocorrencias, cartoes, contaPorId, realizadoPorCartao, fase } = props;
 
-  // Agrupa por dia. A fatura entra no dia do pagamento (fluxo de caixa, §4.8);
-  // por ora ancora no dia_pagamento dentro do mês exibido.
+  // Agrupa por dia. A data de cada ocorrência já vem resolvida pelo motor
+  // (§4.1: âncora no dia + clamp). A fatura entra no dia do pagamento (fluxo de
+  // caixa, §4.8); por ora ancora no dia_pagamento dentro do mês exibido.
   const grupos = useMemo(() => {
     const porDia = new Map<number, ItemDia[]>();
-    for (const l of lancamentos) {
-      const [, , dia] = parteData(l.data);
-      (porDia.get(dia) ?? porDia.set(dia, []).get(dia)!).push({ kind: 'lancamento', l });
+    for (const o of ocorrencias) {
+      const [, , dia] = parteData(o.data);
+      (porDia.get(dia) ?? porDia.set(dia, []).get(dia)!).push({ kind: 'lancamento', o });
     }
     for (const k of cartoes) {
       const dia = Math.min(k.dia_pagamento, 28); // clamp defensivo; §4.1 trata borda
@@ -240,12 +266,12 @@ function Lancamentos(props: {
       .map((dia) => {
         const itens = porDia.get(dia)!;
         for (const it of itens) {
-          if (it.kind === 'lancamento') acc += it.l.tipo === 'entrada' ? it.l.valor : -it.l.valor;
+          if (it.kind === 'lancamento') acc += it.o.tipo === 'entrada' ? it.o.valor : -it.o.valor;
           else acc -= realizadoPorCartao.get(it.k.id) ?? 0; // fatura sai da conta no pagamento
         }
         return { dia, itens, saldoAcumulado: acc };
       });
-  }, [lancamentos, cartoes, realizadoPorCartao]);
+  }, [ocorrencias, cartoes, realizadoPorCartao]);
 
   if (grupos.length === 0) {
     return (
@@ -276,11 +302,11 @@ function Lancamentos(props: {
               {itens.map((it, i) =>
                 it.kind === 'lancamento' ? (
                   <LinhaDeLancamento
-                    key={it.l.id}
-                    tipo={it.l.tipo}
-                    descricao={it.l.descricao}
-                    valor={it.l.tipo === 'saida' ? -it.l.valor : it.l.valor}
-                    conta={(() => { const c = contaPorId.get(it.l.conta_id); return c ? { nome: c.nome } : undefined; })()}
+                    key={it.o.id}
+                    tipo={it.o.tipo}
+                    descricao={it.o.descricao}
+                    valor={it.o.tipo === 'saida' ? -it.o.valor : it.o.valor}
+                    conta={(() => { const c = contaPorId.get(it.o.conta_id); return c ? { nome: c.nome } : undefined; })()}
                     onEditar={() => { /* TODO: editar (§5.7) */ }}
                   />
                 ) : (
