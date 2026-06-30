@@ -273,3 +273,98 @@ function mapTransf(
     total,
   };
 }
+
+// ───────── Divisão de série: "esta e as futuras" (§4.3, Fase 2) ─────────
+//
+// Funções PURAS que calculam o plano de operações para o EditarSheet executar.
+// Isolar a aritmética aqui permite testá-la sem tocar no Supabase.
+//
+// Recorrente (salvar): encerra a regra antiga no ponto de corte e cria uma
+//   regra nova (MESMO serie_id) a partir da ocorrência editada, com o valor
+//   novo. Indefinida → nova indefinida; finita (N) → nova com (N − corte).
+// Recorrente/Parcelado (excluir, = "cancelar"): só encerra a regra antiga.
+// Parcelado (salvar): NÃO suportado nesta fase (ambíguo dividir um total).
+
+/** O "índice de corte" é a posição (0-based) da ocorrência editada na série. */
+
+export interface PlanoEncerrar {
+  tipo: 'encerrar';
+  /** Quantas ocorrências a regra antiga mantém (jan..corte-1). */
+  manter: number;
+  /** Campo a setar conforme a natureza da regra. */
+  campo: 'recorrencia_fim' | 'parcelas';
+}
+
+export interface PlanoNovaRegra {
+  /** valor/mês da nova fase. */
+  valor: number;
+  descricao: string;
+  nota: string | null;
+  /** data de início da nova regra (1ª ocorrência da nova fase). */
+  data: string;
+  /** recorrencia_fim da nova regra: null = indefinida; número = vezes restantes. */
+  recorrencia_fim: number | null;
+}
+
+export interface PlanoDivisao {
+  encerrar: PlanoEncerrar;
+  /** Presente só no "salvar"; ausente no "excluir" (cancelamento). */
+  novaRegra?: PlanoNovaRegra;
+  /** Exceções a remover: as de data_alvo >= a data de corte (§ decisão). */
+  removerExcecoesAPartirDe: string;
+}
+
+/** Indica se a regra suporta "esta e as futuras" no modo dado. */
+export function suportaFuturas(
+  repeticao: Lancamento['repeticao'],
+  acao: 'salvar' | 'excluir',
+): boolean {
+  if (repeticao === 'avista') return false;
+  if (repeticao === 'recorrente') return true; // salvar e excluir
+  if (repeticao === 'parcelar') return acao === 'excluir'; // só cancelar
+  return false;
+}
+
+/**
+ * Calcula o plano de "esta e as futuras".
+ * @param regra      a linha-regra original (lancamentos)
+ * @param corteData  a data resolvida da ocorrência editada (início da nova fase)
+ * @param corteIndice posição 0-based da ocorrência editada na série
+ * @param acao       'salvar' (dividir) ou 'excluir' (cancelar)
+ * @param novos      valores novos da fase futura (só no salvar)
+ */
+export function planejarDivisao(
+  regra: Lancamento,
+  corteData: string,
+  corteIndice: number,
+  acao: 'salvar' | 'excluir',
+  novos?: { valor: number; descricao: string; nota: string | null },
+): PlanoDivisao {
+  const encerrar: PlanoEncerrar = {
+    tipo: 'encerrar',
+    manter: corteIndice, // mantém ocorrências 0..corteIndice-1
+    campo: regra.repeticao === 'parcelar' ? 'parcelas' : 'recorrencia_fim',
+  };
+
+  const plano: PlanoDivisao = { encerrar, removerExcecoesAPartirDe: corteData };
+
+  if (acao === 'salvar') {
+    if (regra.repeticao !== 'recorrente') {
+      throw new Error('Divisão no salvar só é suportada para recorrente.');
+    }
+    if (!novos) throw new Error('Valores novos ausentes na divisão.');
+    // vezes restantes: indefinida continua indefinida; finita perde o que a
+    // fase antiga consumiu (corteIndice ocorrências).
+    const fimAntigo = regra.recorrencia_fim;
+    const fimNovo = fimAntigo == null ? null : Math.max(1, fimAntigo - corteIndice);
+    plano.novaRegra = {
+      valor: novos.valor,
+      descricao: novos.descricao,
+      nota: novos.nota,
+      data: corteData,
+      recorrencia_fim: fimNovo,
+    };
+  }
+
+  return plano;
+}

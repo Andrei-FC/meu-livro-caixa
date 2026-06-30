@@ -146,6 +146,7 @@ export function LancarSheet({
           descricao: descricao.trim() || null,
           repeticao: (repete === 'recorrente' ? 'recorrente' : 'avista') as 'avista' | 'recorrente',
           recorrencia_fim: repete === 'recorrente' && !recIndefinida ? recVezes : null,
+          serie_id: repete === 'recorrente' ? crypto.randomUUID() : null,
         };
         const { error } = await supabase.from('transferencias').insert(payload);
         if (error) throw error;
@@ -162,6 +163,9 @@ export function LancarSheet({
           parcelas: repete === 'parcelar' ? parcelas : null,
           recorrencia_fim: repete === 'recorrente' && !recIndefinida ? recVezes : null,
           assinatura: repete === 'recorrente' ? assinatura : false,
+          // Séries (parcelar/recorrente) recebem serie_id para agrupar ocorrências
+          // e ancorar exceções (§4.1, §4.3); à vista não é série.
+          serie_id: repete === 'avista' ? null : crypto.randomUUID(),
         };
         const { error } = await supabase.from('lancamentos').insert(payload);
         if (error) throw error;

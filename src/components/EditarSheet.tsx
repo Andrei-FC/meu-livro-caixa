@@ -19,6 +19,7 @@ import { formatarBR } from '../lib/formato';
 import { supabase } from '../lib/supabase';
 import type { Conta, Cartao, Lancamento } from '../types/db';
 import type { OcorrenciaLancamento } from '../lib/recorrencia';
+import { planejarDivisao, suportaFuturas } from '../lib/recorrencia';
 
 /**
  * EditarSheet — editar/excluir um lançamento (§5.7). Clone do LancarSheet
@@ -150,6 +151,8 @@ export function EditarSheet({
             { onConflict: 'serie_id,data_alvo' },
           );
         if (error) throw error;
+      } else if (escopo === 'esta_e_futuras') {
+        await executarDivisao('salvar');
       } else if (escopo === 'todas') {
         // Edita a regra inteira; exceções já gravadas permanecem (§4.3).
         const { error } = await supabase
@@ -185,6 +188,8 @@ export function EditarSheet({
             { onConflict: 'serie_id,data_alvo' },
           );
         if (error) throw error;
+      } else if (escopo === 'esta_e_futuras') {
+        await executarDivisao('excluir');
       } else if (escopo === 'todas') {
         // Apaga a regra e suas exceções (após a confirmação de bloqueio).
         const e1 = await supabase.from('excecoes_serie').delete().eq('serie_id', ocorrencia.serieId);
@@ -196,6 +201,55 @@ export function EditarSheet({
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro ao excluir.');
       setSalvando(false);
+    }
+  }
+
+  /** Executa "esta e as futuras": encerra a regra antiga, cria a nova fase
+   *  (no salvar) com o mesmo serie_id, e limpa exceções a partir do corte. */
+  async function executarDivisao(acao: 'salvar' | 'excluir') {
+    if (!ocorrencia || !regra) return;
+    const corteIndice = ocorrencia.indice - 1; // indice é 1-based
+    const plano = planejarDivisao(
+      regra,
+      ocorrencia.data,
+      corteIndice,
+      acao,
+      acao === 'salvar' ? { valor, descricao: descricao.trim(), nota: nota.trim() || null } : undefined,
+    );
+
+    // 1. encerra a regra antiga no ponto de corte
+    const upd =
+      plano.encerrar.campo === 'parcelas'
+        ? { parcelas: plano.encerrar.manter }
+        : { recorrencia_fim: plano.encerrar.manter };
+    const e1 = await supabase.from('lancamentos').update(upd).eq('id', regra.id);
+    if (e1.error) throw e1.error;
+
+    // 2. limpa exceções que agora pertenceriam à nova fase (data_alvo >= corte)
+    const e2 = await supabase
+      .from('excecoes_serie')
+      .delete()
+      .eq('serie_id', ocorrencia.serieId)
+      .gte('data_alvo', plano.removerExcecoesAPartirDe);
+    if (e2.error) throw e2.error;
+
+    // 3. cria a nova regra (só no salvar), mesmo serie_id (mesma etiqueta)
+    if (plano.novaRegra) {
+      const e3 = await supabase.from('lancamentos').insert({
+        tipo: regra.tipo,
+        valor: plano.novaRegra.valor,
+        descricao: plano.novaRegra.descricao,
+        nota: plano.novaRegra.nota,
+        data: plano.novaRegra.data,
+        conta_id: regra.conta_id,
+        cartao_id: regra.cartao_id,
+        repeticao: 'recorrente',
+        parcelas: null,
+        recorrencia_fim: plano.novaRegra.recorrencia_fim,
+        assinatura: regra.assinatura,
+        serie_id: ocorrencia.serieId,
+      });
+      if (e3.error) throw e3.error;
     }
   }
 
@@ -327,7 +381,11 @@ export function EditarSheet({
       <EscopoSheet
         aberto={escopoPara !== null}
         acao={escopoPara ?? 'salvar'}
-        desabilitadas={['esta_e_futuras'] /* Fase 2 */}
+        desabilitadas={
+          regra && escopoPara && !suportaFuturas(regra.repeticao, escopoPara)
+            ? ['esta_e_futuras']
+            : []
+        }
         onFechar={() => setEscopoPara(null)}
         onEscolher={aoEscolherEscopo}
       />
