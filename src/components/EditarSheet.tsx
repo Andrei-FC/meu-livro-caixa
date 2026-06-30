@@ -381,13 +381,14 @@ export function EditarSheet({
       <EscopoSheet
         aberto={escopoPara !== null}
         acao={escopoPara ?? 'salvar'}
+        rotuloSerie={regra?.repeticao === 'parcelar' ? 'Lançamento parcelado' : 'Lançamento recorrente'}
         desabilitadas={
           regra && escopoPara && !suportaFuturas(regra.repeticao, escopoPara)
             ? ['esta_e_futuras']
             : []
         }
         onFechar={() => setEscopoPara(null)}
-        onEscolher={aoEscolherEscopo}
+        onConfirmar={aoEscolherEscopo}
       />
 
       {confirmarExcluirTodas && (
