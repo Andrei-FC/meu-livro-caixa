@@ -21,6 +21,8 @@ import {
   CardDeEntidade,
   FAB,
   Header,
+  MenuDrawer,
+  type DestinoMenu,
   LancarSheet,
   EditarSheet,
 } from '../components';
@@ -64,6 +66,7 @@ export function Home() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [sheetAberto, setSheetAberto] = useState(false);
+  const [menuAberto, setMenuAberto] = useState(false);
   const [emEdicao, setEmEdicao] = useState<OcorrenciaLancamento | null>(null);
 
   const carregar = useCallback(() => {
@@ -160,14 +163,34 @@ export function Home() {
     setMes(d.getMonth());
   }
 
+  // Navegação do menu drawer (§5.8). 'mes' já é esta tela; 'sair' derruba a
+  // sessão (o App reativo volta ao Login). Os destinos de gestão ainda não
+  // têm tela (§5.8) — ficam como stub, fechando o drawer por ora.
+  async function navegarMenu(destino: DestinoMenu) {
+    setMenuAberto(false);
+    if (destino === 'sair') {
+      await supabase.auth.signOut();
+      return;
+    }
+    // TODO: rotear cofre/contas/cartões/categorias/configurações (§5.8)
+  }
+
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100dvh', position: 'relative' }}>
       {/* ── Header: menu + navegação de mês (§5.1, Figma 2221:992) ── */}
       <Header
         mesAno={`${MESES[mes]} ${ano}`}
-        onMenu={() => { /* TODO: abrir drawer (§5.8) */ }}
+        onMenu={() => setMenuAberto(true)}
         onAnterior={() => mudarMes(-1)}
         onProximo={() => mudarMes(1)}
+      />
+
+      {/* ── Menu drawer (§5.8) ── */}
+      <MenuDrawer
+        aberto={menuAberto}
+        onFechar={() => setMenuAberto(false)}
+        ativo="mes"
+        onNavegar={navegarMenu}
       />
 
       {/* ── Card de resumo: FIXO no topo, acima das tabs (§5.1) ── */}

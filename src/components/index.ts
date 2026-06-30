@@ -25,6 +25,8 @@ export type { AbaId } from './Tabs';
 export { ModalDeAlerta } from './ModalDeAlerta';
 export type { TipoAlerta } from './ModalDeAlerta';
 export { Header } from './Header';
+export { MenuDrawer } from './MenuDrawer';
+export type { DestinoMenu } from './MenuDrawer';
 export { BottomSheet } from './BottomSheet';
 export { SeletorContaCartao } from './SeletorContaCartao';
 export type { ContextoSeletor, Selecao } from './SeletorContaCartao';
