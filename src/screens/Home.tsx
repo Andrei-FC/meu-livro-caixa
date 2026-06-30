@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import type { Conta, Cartao, Lancamento, ExcecaoSerie } from '../types/db';
+import type { Conta, Cartao, Lancamento, ExcecaoSerie, Transferencia } from '../types/db';
 import {
   lancamentosNoMes,
   indexarExcecoes,
+  saldoHerdado,
+  liquidoDoMes,
   parteData,
   type OcorrenciaLancamento,
 } from '../lib/recorrencia';
@@ -58,6 +60,7 @@ export function Home() {
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [excecoes, setExcecoes] = useState<ExcecaoSerie[]>([]);
+  const [transferencias, setTransferencias] = useState<Transferencia[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [sheetAberto, setSheetAberto] = useState(false);
@@ -70,13 +73,15 @@ export function Home() {
       supabase.from('cartoes').select('*').order('criado_em'),
       supabase.from('lancamentos').select('*').order('data'),
       supabase.from('excecoes_serie').select('*'),
-    ]).then(([rc, rk, rl, re]) => {
-      const e = rc.error || rk.error || rl.error || re.error;
+      supabase.from('transferencias').select('*'),
+    ]).then(([rc, rk, rl, re, rt]) => {
+      const e = rc.error || rk.error || rl.error || re.error || rt.error;
       if (e) setErro(e.message);
       setContas(rc.data ?? []);
       setCartoes(rk.data ?? []);
       setLancamentos(rl.data ?? []);
       setExcecoes(re.data ?? []);
+      setTransferencias(rt.data ?? []);
       setCarregando(false);
     });
   }, []);
@@ -134,8 +139,20 @@ export function Home() {
     }
     return { entradas: e, saidas: s };
   }, [ocorrenciasLista]);
-  const herdado = 0; // TODO §4.7: saldo contínuo acumulado dos meses anteriores
-  const saldoMes = herdado + entradas - saidas;
+  // Saldo herdado: acumulado desde a âncora (1º registro) até o mês anterior
+  // (§4.7). Calculado na leitura e memoizado — barato porque expande regras,
+  // não linhas. Projeção futura limitada ao horizonte do motor.
+  const herdado = useMemo(
+    () => saldoHerdado(lancamentos, transferencias, contas, ano, mes, hoje, indiceExcecoes),
+    [lancamentos, transferencias, contas, ano, mes, hoje, indiceExcecoes],
+  );
+  // Líquido do mês exibido pela MESMA regra do acúmulo (inclui cartão e
+  // poupança), para o saldo do mês bater com o que ele herda ao mês seguinte.
+  const liquidoMes = useMemo(
+    () => liquidoDoMes(lancamentos, transferencias, contas, ano, mes, hoje, indiceExcecoes),
+    [lancamentos, transferencias, contas, ano, mes, hoje, indiceExcecoes],
+  );
+  const saldoMes = herdado + liquidoMes;
 
   function mudarMes(delta: number) {
     const d = new Date(ano, mes + delta, 1);
@@ -181,6 +198,7 @@ export function Home() {
                 realizadoPorCartao={realizadoPorCartao}
                 fase={(k) => faseFatura(k, ano, mes, hoje)}
                 onEditar={setEmEdicao}
+                saldoInicial={herdado}
               />
             )}
 
@@ -264,8 +282,9 @@ function Lancamentos(props: {
   realizadoPorCartao: Map<string, number>;
   fase: (k: Cartao) => FaseFatura;
   onEditar: (o: OcorrenciaLancamento) => void;
+  saldoInicial: number;
 }) {
-  const { ano, mes, ocorrencias, cartoes, contaPorId, realizadoPorCartao, fase, onEditar } = props;
+  const { ano, mes, ocorrencias, cartoes, contaPorId, realizadoPorCartao, fase, onEditar, saldoInicial } = props;
 
   // Agrupa por dia. A data de cada ocorrência já vem resolvida pelo motor
   // (§4.1: âncora no dia + clamp). A fatura entra no dia do pagamento (fluxo de
@@ -280,8 +299,8 @@ function Lancamentos(props: {
       const dia = Math.min(k.dia_pagamento, 28); // clamp defensivo; §4.1 trata borda
       (porDia.get(dia) ?? porDia.set(dia, []).get(dia)!).push({ kind: 'fatura', k });
     }
-    // Saldo acumulado dia a dia (dentro do mês; herdado=0 por ora, §4.7).
-    let acc = 0;
+    // Saldo acumulado dia a dia, partindo do herdado do mês (§4.7).
+    let acc = saldoInicial;
     return [...porDia.keys()]
       .sort((a, b) => a - b)
       .map((dia) => {
@@ -292,7 +311,7 @@ function Lancamentos(props: {
         }
         return { dia, itens, saldoAcumulado: acc };
       });
-  }, [ocorrencias, cartoes, realizadoPorCartao]);
+  }, [ocorrencias, cartoes, realizadoPorCartao, saldoInicial]);
 
   if (grupos.length === 0) {
     return (

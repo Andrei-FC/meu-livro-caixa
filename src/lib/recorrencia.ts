@@ -14,7 +14,7 @@
 //  - Âncora no dia do mês + clamp 29–31 no último dia, voltando ao dia-âncora
 //    nos meses que comportam. Nunca transborda para o mês seguinte (princípio 2).
 
-import type { Lancamento, Transferencia, ExcecaoSerie } from '../types/db';
+import type { Lancamento, Transferencia, ExcecaoSerie, Conta } from '../types/db';
 
 /** Horizonte de projeção: meses à frente de hoje para recorrência indefinida. */
 export const HORIZONTE_MESES = 24;
@@ -367,4 +367,100 @@ export function planejarDivisao(
   }
 
   return plano;
+}
+
+// ───────── Saldo contínuo (§4.7) ─────────
+//
+// O saldo rola de um mês para o seguinte: saldo(M) = herdado(M) + líquido(M),
+// onde herdado(M) = saldo acumulado de todos os meses desde a ÂNCORA até M-1.
+// Âncora = primeiro registro (menor data entre lançamentos e transferências);
+// antes dela não existe "antes", herdado = 0.
+//
+// Cálculo na leitura (sem tabela de snapshots): as recorrências são regras,
+// não linhas, então somar mês a mês desde a âncora é barato. A Home memoiza o
+// resultado em memória. Projeção futura limitada ao HORIZONTE (recorrência
+// indefinida não soma além de hoje+24m).
+
+
+/** Índice de mês absoluto exposto para a Home memoizar/iterar. */
+export function mesAbs(ano: number, mes: number): number {
+  return ano * 12 + mes;
+}
+
+/** Acha a âncora (ano,mes do primeiro registro). null se não há nada. */
+export function acharAncora(
+  lancamentos: Lancamento[],
+  transferencias: Transferencia[],
+): { ano: number; mes: number } | null {
+  let min: string | null = null;
+  for (const l of lancamentos) if (min === null || l.data < min) min = l.data;
+  for (const t of transferencias) if (min === null || t.data < min) min = t.data;
+  if (min === null) return null;
+  const [a, m] = parteData(min);
+  return { ano: a, mes: m };
+}
+
+/**
+ * Líquido de um único mês (o "+200, −300…" daquele mês), em conta-corrente:
+ *   + entradas  − saídas (sem cartão)
+ *   − faturas de cartão que pesam no mês (realizado das compras do mês)
+ *   − depósitos em poupança  + retiradas de poupança
+ *   transferência corrente↔corrente é neutra (não entra)
+ */
+export function liquidoDoMes(
+  lancamentos: Lancamento[],
+  transferencias: Transferencia[],
+  contas: Conta[],
+  alvoAno: number,
+  alvoMes: number,
+  hoje: Date,
+  excecoes?: IndiceExcecoes,
+): number {
+  const tipoConta = new Map(contas.map((c) => [c.id, c.tipo]));
+  let total = 0;
+
+  // Lançamentos (inclui cartão: a compra de cartão pesa no líquido do mês em
+  // que cai — mantém a aproximação atual da Home; o ciclo fechamento×pagamento
+  // é refinamento futuro). Entrada soma, saída/cartão subtrai.
+  for (const o of lancamentosNoMes(lancamentos, alvoAno, alvoMes, hoje, excecoes)) {
+    total += o.tipo === 'entrada' ? o.valor : -o.valor;
+  }
+
+  // Transferências: só as que envolvem poupança alteram o disponível (§4.5).
+  for (const o of transferenciasNoMes(transferencias, alvoAno, alvoMes, hoje)) {
+    const destinoPoupanca = tipoConta.get(o.para_conta_id) === 'poupanca';
+    const origemPoupanca = tipoConta.get(o.de_conta_id) === 'poupanca';
+    if (destinoPoupanca && !origemPoupanca) total -= o.valor; // depósito: sai do disponível
+    else if (origemPoupanca && !destinoPoupanca) total += o.valor; // retirada: volta
+    // corrente↔corrente ou poupança↔poupança: neutro
+  }
+
+  return total;
+}
+
+/**
+ * Saldo herdado de um mês: acumulado desde a âncora até o mês ANTERIOR ao alvo.
+ * Antes da âncora (ou sem âncora) = 0. Itera mês a mês — barato porque são
+ * regras, não linhas. A Home memoiza por (ano,mes).
+ */
+export function saldoHerdado(
+  lancamentos: Lancamento[],
+  transferencias: Transferencia[],
+  contas: Conta[],
+  alvoAno: number,
+  alvoMes: number,
+  hoje: Date,
+  excecoes?: IndiceExcecoes,
+): number {
+  const ancora = acharAncora(lancamentos, transferencias);
+  if (!ancora) return 0;
+  const inicio = mesAbs(ancora.ano, ancora.mes);
+  const fim = mesAbs(alvoAno, alvoMes); // exclusivo: herdado é até o mês anterior
+  if (fim <= inicio) return 0; // alvo é a âncora ou anterior: nada herdado
+
+  let acc = 0;
+  for (let abs = inicio; abs < fim; abs++) {
+    acc += liquidoDoMes(lancamentos, transferencias, contas, Math.floor(abs / 12), abs % 12, hoje, excecoes);
+  }
+  return acc;
 }
