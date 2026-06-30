@@ -14,10 +14,26 @@
 //  - Âncora no dia do mês + clamp 29–31 no último dia, voltando ao dia-âncora
 //    nos meses que comportam. Nunca transborda para o mês seguinte (princípio 2).
 
-import type { Lancamento, Transferencia } from '../types/db';
+import type { Lancamento, Transferencia, ExcecaoSerie } from '../types/db';
 
 /** Horizonte de projeção: meses à frente de hoje para recorrência indefinida. */
 export const HORIZONTE_MESES = 24;
+
+/**
+ * Índice de exceções para consulta O(1) no motor: serie_id → (data_alvo → exceção).
+ * Construído uma vez na Home e passado para a expansão.
+ */
+export type IndiceExcecoes = Map<string, Map<string, ExcecaoSerie>>;
+
+export function indexarExcecoes(excecoes: ExcecaoSerie[]): IndiceExcecoes {
+  const idx: IndiceExcecoes = new Map();
+  for (const e of excecoes) {
+    let porData = idx.get(e.serie_id);
+    if (!porData) { porData = new Map(); idx.set(e.serie_id, porData); }
+    porData.set(e.data_alvo, e);
+  }
+  return idx;
+}
 
 /** Parte uma data YYYY-MM-DD em [ano, mes(0-11), dia], sem fuso. */
 export function parteData(iso: string): [number, number, number] {
@@ -125,17 +141,34 @@ export function lancamentosNoMes(
   alvoAno: number,
   alvoMes: number,
   hoje: Date,
+  excecoes?: IndiceExcecoes,
 ): OcorrenciaLancamento[] {
   const horizonteAbs = indiceMes(hoje.getFullYear(), hoje.getMonth()) + HORIZONTE_MESES;
   const alvoAbs = indiceMes(alvoAno, alvoMes);
   const out: OcorrenciaLancamento[] = [];
+
+  /** Aplica a exceção da série naquela data, se houver. Devolve null se a
+   *  ocorrência foi excluída ("só esta" excluída); senão a ocorrência (com
+   *  overrides de valor/descrição aplicados). */
+  function comExcecao(oc: OcorrenciaLancamento): OcorrenciaLancamento | null {
+    if (!excecoes || !oc.serieId) return oc;
+    const e = excecoes.get(oc.serieId)?.get(oc.data);
+    if (!e) return oc;
+    if (e.excluida) return null;
+    return {
+      ...oc,
+      valor: e.valor ?? oc.valor,
+      descricao: e.descricao ?? oc.descricao,
+    };
+  }
 
   for (const r of regras) {
     const [ia, im, dia] = parteData(r.data);
 
     if (r.repeticao === 'avista') {
       if (ia === alvoAno && im === alvoMes) {
-        out.push(mapLanc(r, r.valor, r.data, 1, null));
+        const oc = comExcecao(mapLanc(r, r.valor, r.data, 1, null));
+        if (oc) out.push(oc);
       }
       continue;
     }
@@ -147,7 +180,8 @@ export function lancamentosNoMes(
       const n = r.parcelas ?? 1;
       if (i >= n) continue; // já terminou de parcelar
       const { ano, mes, dia: d } = dataDaOcorrencia(ia, im, dia, i);
-      out.push(mapLanc(r, r.valor / n, montaISO(ano, mes, d), i + 1, n));
+      const oc = comExcecao(mapLanc(r, r.valor / n, montaISO(ano, mes, d), i + 1, n));
+      if (oc) out.push(oc);
       continue;
     }
 
@@ -158,7 +192,8 @@ export function lancamentosNoMes(
       // Indefinida: corta no horizonte (só projeção futura além de hoje+24m).
       if (n == null && alvoAbs > horizonteAbs) continue;
       const { ano, mes, dia: d } = dataDaOcorrencia(ia, im, dia, i);
-      out.push(mapLanc(r, r.valor, montaISO(ano, mes, d), i + 1, n));
+      const oc = comExcecao(mapLanc(r, r.valor, montaISO(ano, mes, d), i + 1, n));
+      if (oc) out.push(oc);
     }
   }
 

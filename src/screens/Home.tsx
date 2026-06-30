@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import type { Conta, Cartao, Lancamento } from '../types/db';
+import type { Conta, Cartao, Lancamento, ExcecaoSerie } from '../types/db';
 import {
   lancamentosNoMes,
+  indexarExcecoes,
   parteData,
   type OcorrenciaLancamento,
 } from '../lib/recorrencia';
@@ -19,6 +20,7 @@ import {
   FAB,
   Header,
   LancarSheet,
+  EditarSheet,
 } from '../components';
 
 /** Home real (§5.1). Compõe só a biblioteca de componentes.
@@ -55,9 +57,11 @@ export function Home() {
   const [contas, setContas] = useState<Conta[]>([]);
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
+  const [excecoes, setExcecoes] = useState<ExcecaoSerie[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [sheetAberto, setSheetAberto] = useState(false);
+  const [emEdicao, setEmEdicao] = useState<OcorrenciaLancamento | null>(null);
 
   const carregar = useCallback(() => {
     setErro(null);
@@ -65,12 +69,14 @@ export function Home() {
       supabase.from('contas').select('*').is('arquivada_em', null).order('criada_em'),
       supabase.from('cartoes').select('*').order('criado_em'),
       supabase.from('lancamentos').select('*').order('data'),
-    ]).then(([rc, rk, rl]) => {
-      const e = rc.error || rk.error || rl.error;
+      supabase.from('excecoes_serie').select('*'),
+    ]).then(([rc, rk, rl, re]) => {
+      const e = rc.error || rk.error || rl.error || re.error;
       if (e) setErro(e.message);
       setContas(rc.data ?? []);
       setCartoes(rk.data ?? []);
       setLancamentos(rl.data ?? []);
+      setExcecoes(re.data ?? []);
       setCarregando(false);
     });
   }, []);
@@ -97,9 +103,11 @@ export function Home() {
   // Ocorrências do mês exibido, materializadas a partir das regras (§4.1).
   // O motor expande parcelas/recorrências; o passado e o futuro (até o
   // horizonte) saem daqui, não de um filtro por data crua.
+  const indiceExcecoes = useMemo(() => indexarExcecoes(excecoes), [excecoes]);
+
   const ocorrenciasDoMes = useMemo(
-    () => lancamentosNoMes(lancamentos, ano, mes, hoje),
-    [lancamentos, ano, mes, hoje],
+    () => lancamentosNoMes(lancamentos, ano, mes, hoje, indiceExcecoes),
+    [lancamentos, ano, mes, hoje, indiceExcecoes],
   );
 
   // Da lista do mês saem as ocorrências em conta-corrente, fora de cartão
@@ -172,6 +180,7 @@ export function Home() {
                 contaPorId={contaPorId}
                 realizadoPorCartao={realizadoPorCartao}
                 fase={(k) => faseFatura(k, ano, mes, hoje)}
+                onEditar={setEmEdicao}
               />
             )}
 
@@ -225,6 +234,17 @@ export function Home() {
         onFechar={() => setSheetAberto(false)}
         onSalvou={() => { carregar(); }}
       />
+
+      <EditarSheet
+        aberto={emEdicao !== null}
+        ocorrencia={emEdicao}
+        regra={emEdicao ? lancamentos.find((l) => l.id === emEdicao.origemId) ?? null : null}
+        contas={contas}
+        cartoes={cartoes}
+        historicoDescricoes={historicoDescricoes}
+        onFechar={() => setEmEdicao(null)}
+        onSalvou={() => { carregar(); }}
+      />
     </div>
   );
 }
@@ -243,8 +263,9 @@ function Lancamentos(props: {
   contaPorId: Map<string, Conta>;
   realizadoPorCartao: Map<string, number>;
   fase: (k: Cartao) => FaseFatura;
+  onEditar: (o: OcorrenciaLancamento) => void;
 }) {
-  const { ano, mes, ocorrencias, cartoes, contaPorId, realizadoPorCartao, fase } = props;
+  const { ano, mes, ocorrencias, cartoes, contaPorId, realizadoPorCartao, fase, onEditar } = props;
 
   // Agrupa por dia. A data de cada ocorrência já vem resolvida pelo motor
   // (§4.1: âncora no dia + clamp). A fatura entra no dia do pagamento (fluxo de
@@ -307,7 +328,7 @@ function Lancamentos(props: {
                     descricao={it.o.descricao}
                     valor={it.o.tipo === 'saida' ? -it.o.valor : it.o.valor}
                     conta={(() => { const c = contaPorId.get(it.o.conta_id); return c ? { nome: c.nome } : undefined; })()}
-                    onEditar={() => { /* TODO: editar (§5.7) */ }}
+                    onEditar={() => onEditar(it.o)}
                   />
                 ) : (
                   <LinhaDeFatura

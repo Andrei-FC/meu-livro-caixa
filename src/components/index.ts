@@ -29,6 +29,9 @@ export { BottomSheet } from './BottomSheet';
 export { SeletorContaCartao } from './SeletorContaCartao';
 export type { ContextoSeletor, Selecao } from './SeletorContaCartao';
 export { LancarSheet } from './LancarSheet';
+export { EditarSheet } from './EditarSheet';
+export { EscopoSheet } from './EscopoSheet';
+export type { EscopoSerie } from './EscopoSheet';
 
 // Ícones (re-export de conveniência; também acessíveis em '../icons')
 export * from '../icons';

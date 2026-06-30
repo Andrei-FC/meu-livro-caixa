@@ -55,3 +55,14 @@ export interface Transferencia {
   serie_id: string | null;
   criada_em: string;
 }
+
+export interface ExcecaoSerie {
+  id: string;
+  serie_id: string;
+  data_alvo: string; // YYYY-MM-DD — a ocorrência específica (data resolvida)
+  excluida: boolean; // true = "só esta" excluída; o motor pula a ocorrência
+  valor: number | null; // override; null = herda da regra
+  descricao: string | null; // override; null = herda
+  nota: string | null; // override; null = herda
+  criada_em: string;
+}
