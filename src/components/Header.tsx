@@ -56,7 +56,7 @@ type DefaultProps = {
 
 type ChuldProps = {
   variante: 'chuld';
-  /** Título da página, ex.: "Contas", "Novo Cartão". */
+  /** Título da página, ex.: "Contas", "Novo Cartão", nome do cartão. */
   titulo: string;
   /** Seta de voltar. */
   onVoltar?: () => void;
@@ -64,6 +64,13 @@ type ChuldProps = {
   fab?: boolean;
   /** Toca no FAB. */
   onFab?: () => void;
+  /** Mostra o seletor de mês (‹ Mês Ano ›) à direita — drill-down do cartão
+   *  (§5.3, Figma prop "Show Date"). Requer mesAno. Default false. */
+  mostrarData?: boolean;
+  /** Rótulo do mês exibido, ex.: "Junho 2026". Só usado com mostrarData. */
+  mesAno?: string;
+  onAnterior?: () => void;
+  onProximo?: () => void;
 };
 
 type Props = DefaultProps | ChuldProps;
@@ -104,7 +111,7 @@ function HeaderDefault({ mesAno, onMenu, onAnterior, onProximo }: DefaultProps) 
   );
 }
 
-function HeaderChuld({ titulo, onVoltar, fab = false, onFab }: ChuldProps) {
+function HeaderChuld({ titulo, onVoltar, fab = false, onFab, mostrarData = false, mesAno, onAnterior, onProximo }: ChuldProps) {
   return (
     <header style={{ paddingTop: 'var(--space-md)' }}>
       <div style={topBar}>
@@ -120,6 +127,24 @@ function HeaderChuld({ titulo, onVoltar, fab = false, onFab }: ChuldProps) {
             {titulo}
           </span>
         </div>
+
+        {/* Seletor de mês opcional (drill-down do cartão, §5.3) */}
+        {mostrarData && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)', flex: '0 0 auto' }}>
+            <button type="button" aria-label="Mês anterior" onClick={onAnterior} style={{ ...botaoPill, width: 36, height: 36 }}>
+              <IconeChevronLeft tamanho={18} />
+            </button>
+            <span
+              className="type-title"
+              style={{ color: 'var(--text-primary)', padding: '0 var(--space-xs)', textTransform: 'capitalize', whiteSpace: 'nowrap' }}
+            >
+              {mesAno}
+            </span>
+            <button type="button" aria-label="Próximo mês" onClick={onProximo} style={{ ...botaoPill, width: 36, height: 36 }}>
+              <IconeChevronRight tamanho={18} />
+            </button>
+          </div>
+        )}
 
         {/* FAB `+` opcional (criar nova entidade nas telas de gerenciar) */}
         {fab && (

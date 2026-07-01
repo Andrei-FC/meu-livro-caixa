@@ -307,6 +307,8 @@ export function Home() {
         lancamentos={lancamentos}
         excecoes={indiceExcecoes}
         hoje={hoje}
+        anoInicial={ano}
+        mesInicial={mes}
         onVoltar={() => setPagina(null)}
         onEditar={(o) => { setPagina(null); setEmEdicao(o); }}
       />

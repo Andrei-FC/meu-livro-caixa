@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Header, CardDeEntidade, LinhaDeLancamento } from '../components';
 import {
   ocorrenciasDoCiclo,
@@ -13,23 +13,29 @@ import type { Cartao, Lancamento } from '../types/db';
 /**
  * Cartão — Fatura (drill-down) — §5.3, Figma 2015:113.
  * Aberta ao tocar na Linha de fatura da Home. Página própria (padrão §5.8:
- * Header chuld + conteúdo), sem FAB.
+ * Header chuld + conteúdo), sem FAB, COM seletor de mês (Show Date do Header).
  *
  * Estrutura (do Figma):
- *  1. Header chuld: voltar + nome do cartão.
+ *  1. Header chuld: voltar + nome do cartão + seletor de mês (‹ Mês Ano ›).
  *  2. Hero: INSTÂNCIA do Card de entidade (variante Cartão) — fonte única do
- *     visual do cartão (§4.4/§5.3). Recebe realizado/previsão do ciclo corrente
+ *     visual do cartão (§4.4/§5.3). Recebe realizado/previsão do ciclo exibido
  *     e herda o tema; a Barra de previsão e a legenda vêm do próprio componente.
  *  3. Compras do ciclo, agrupadas: COMPRAS DO CICLO (à vista) · PARCELAS ·
  *     ASSINATURAS. Cada grupo é um card branco de Linhas de lançamento, sem tag
  *     de conta (todas são deste cartão — §4.8).
  *
- * O "ciclo corrente" exibido é o que está aberto/por fechar hoje: o ciclo que
- * fecha no mês de `hoje` (regra de fechamento §4.8). O realizado, a fase e as
- * ocorrências saem todos do motor (fonte única, recorrencia.ts) — a tela não
- * recalcula nada de fatura por conta própria.
+ * NAVEGAÇÃO DE MÊS. O drill-down abre no mês em que a linha da fatura foi
+ * tocada (anoInicial/mesInicial vindos da Home) e navega mês a mês. O ciclo
+ * exibido é o que VENCE no mês selecionado (mesma regra da linha na Home,
+ * §4.8): fatura que vence em M fecha em M se dia_pagamento > dia_fechamento,
+ * senão em M−1. Assim o que o usuário vê aqui bate exatamente com a linha que
+ * ele tocou. Realizado, fase e ocorrências saem todos do motor (fonte única).
  */
 
+const MESES = [
+  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+];
 const MESES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 type Props = {
@@ -37,15 +43,41 @@ type Props = {
   lancamentos: Lancamento[];
   excecoes: IndiceExcecoes;
   hoje: Date;
+  /** Mês/ano em que a linha da fatura foi tocada na Home — ponto de partida. */
+  anoInicial: number;
+  mesInicial: number;
   onVoltar: () => void;
   /** Abre o Editar da ocorrência tocada (mesmo fluxo da Home, §5.7). */
   onEditar: (o: OcorrenciaLancamento) => void;
 };
 
-export function CartaoFatura({ cartao, lancamentos, excecoes, hoje, onVoltar, onEditar }: Props) {
-  // Ciclo corrente = o que fecha no mês de hoje (§4.8). É o ciclo em foco no
-  // drill-down: o que está aberto/por fechar agora.
-  const cicloAbs = useMemo(() => hoje.getFullYear() * 12 + hoje.getMonth(), [hoje]);
+export function CartaoFatura({
+  cartao,
+  lancamentos,
+  excecoes,
+  hoje,
+  anoInicial,
+  mesInicial,
+  onVoltar,
+  onEditar,
+}: Props) {
+  // Mês exibido — começa no mês da linha tocada; navegável.
+  const [ano, setAno] = useState(anoInicial);
+  const [mes, setMes] = useState(mesInicial);
+
+  function mudarMes(delta: number) {
+    const d = new Date(ano, mes + delta, 1);
+    setAno(d.getFullYear());
+    setMes(d.getMonth());
+  }
+
+  // Ciclo que VENCE no mês exibido (§4.8): a mesma regra que decide onde a linha
+  // pesa na Home. Se o vencimento cai depois do fechamento, a fatura é do
+  // próprio mês; senão, do mês anterior.
+  const cicloAbs = useMemo(() => {
+    const alvoAbs = ano * 12 + mes;
+    return cartao.dia_pagamento > cartao.dia_fechamento ? alvoAbs : alvoAbs - 1;
+  }, [ano, mes, cartao.dia_pagamento, cartao.dia_fechamento]);
 
   const realizado = useMemo(
     () => realizadoDoCiclo(lancamentos, cartao, cicloAbs, hoje, excecoes),
@@ -66,8 +98,10 @@ export function CartaoFatura({ cartao, lancamentos, excecoes, hoje, onVoltar, on
   const temPrev = previsao != null && previsao > 0;
   const valorHero = fase === 'fechada' || !temPrev ? realizado : Math.max(previsao!, realizado);
 
+  // O mês do fechamento é o mês do ciclo (cicloAbs), não o mês exibido.
+  const mesFechamento = ((cicloAbs % 12) + 12) % 12;
   const pct = temPrev ? Math.round((realizado / previsao!) * 100) : 0;
-  const fechaTxt = `fecha ${cartao.dia_fechamento} ${MESES_CURTO[hoje.getMonth()]}`;
+  const fechaTxt = `fecha ${cartao.dia_fechamento} ${MESES_CURTO[mesFechamento]}`;
   const legenda =
     fase === 'fechada'
       ? `Fatura fechada · ${fechaTxt}`
@@ -80,7 +114,15 @@ export function CartaoFatura({ cartao, lancamentos, excecoes, hoje, onVoltar, on
 
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100dvh', background: 'var(--bg-page)' }}>
-      <Header variante="chuld" titulo={cartao.nome} onVoltar={onVoltar} />
+      <Header
+        variante="chuld"
+        titulo={cartao.nome}
+        onVoltar={onVoltar}
+        mostrarData
+        mesAno={`${MESES[mes]} ${ano}`}
+        onAnterior={() => mudarMes(-1)}
+        onProximo={() => mudarMes(1)}
+      />
 
       <main
         style={{
