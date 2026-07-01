@@ -91,12 +91,15 @@ export function CartaoFatura({
     [lancamentos, cartao, cicloAbs, hoje, excecoes],
   );
 
-  // O valor "grande" do hero segue a regra da fatura (§4.4): aberta/futura com
-  // previsão mostra max(previsão, realizado); fechada ou sem previsão, o
-  // realizado. Assim o número bate com o que pesa no saldo.
+  // O valor "grande" do hero é SEMPRE o realizado — o que já foi de fato
+  // consumido na fatura (§4.4). O previsto não entra no número grande; ele vive
+  // só na legenda/barra abaixo (fixo). Consequência aceita: quando a fatura
+  // está aberta com realizado < previsão, o número grande (realizado) é MENOR
+  // que o que pesa no saldo do mês (max(previsão, realizado)) — o card mostra o
+  // real; o impacto no fluxo de caixa continua sendo a regra do max na Home.
   const previsao = cartao.previsao_mensal;
   const temPrev = previsao != null && previsao > 0;
-  const valorHero = fase === 'fechada' || !temPrev ? realizado : Math.max(previsao!, realizado);
+  const valorHero = realizado;
 
   // O mês do fechamento é o mês do ciclo (cicloAbs), não o mês exibido.
   const mesFechamento = ((cicloAbs % 12) + 12) % 12;
