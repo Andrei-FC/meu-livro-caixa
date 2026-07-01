@@ -95,8 +95,10 @@ export function LancarSheet({
   const sugestoes = useMemo(() => {
     const q = descricao.trim().toLowerCase();
     if (!q) return [];
+    // historicoDescricoes já vem ordenado por frequência+recência (§4.6);
+    // aqui só filtramos por "contém" e mantemos essa ordem.
     return historicoDescricoes
-      .filter((d) => d.toLowerCase().startsWith(q) && d.toLowerCase() !== q)
+      .filter((d) => { const dl = d.toLowerCase(); return dl.includes(q) && dl !== q; })
       .slice(0, 4);
   }, [descricao, historicoDescricoes]);
 

@@ -107,7 +107,7 @@ export function EditarSheet({
   const sugestoes = useMemo(() => {
     const q = descricao.trim().toLowerCase();
     if (!q) return [];
-    return historicoDescricoes.filter((d) => d.toLowerCase().startsWith(q) && d.toLowerCase() !== q).slice(0, 4);
+    return historicoDescricoes.filter((d) => { const dl = d.toLowerCase(); return dl.includes(q) && dl !== q; }).slice(0, 4);
   }, [descricao, historicoDescricoes]);
 
   const podeSalvar = valor > 0 && descricao.trim().length > 0 && !salvando;

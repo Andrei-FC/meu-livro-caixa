@@ -120,13 +120,26 @@ export function Home() {
   // Descrições já usadas, para o autocomplete do Lançar (§4.6). Únicas,
   // preservando a forma original mais recente de cada categoria.
   const historicoDescricoes = useMemo(() => {
-    const vistas = new Set<string>();
-    const lista: string[] = [];
+    // Ranking por FREQUÊNCIA + RECÊNCIA (§4.6): agrega por categoria
+    // (case-insensitive), conta os usos e guarda o registro mais recente
+    // (criado_em). Ordena por frequência desc, desempata pela recência desc.
+    // O rótulo exibido é a grafia da ocorrência mais recente.
+    const agg = new Map<string, { rotulo: string; usos: number; recente: string }>();
     for (const l of lancamentos) {
-      const chave = l.descricao.trim().toLowerCase();
-      if (chave && !vistas.has(chave)) { vistas.add(chave); lista.push(l.descricao.trim()); }
+      const rotulo = l.descricao.trim();
+      const chave = rotulo.toLowerCase();
+      if (!chave) continue;
+      const atual = agg.get(chave);
+      if (!atual) {
+        agg.set(chave, { rotulo, usos: 1, recente: l.criado_em });
+      } else {
+        atual.usos += 1;
+        if (l.criado_em > atual.recente) { atual.recente = l.criado_em; atual.rotulo = rotulo; }
+      }
     }
-    return lista;
+    return [...agg.values()]
+      .sort((a, b) => (b.usos - a.usos) || (a.recente < b.recente ? 1 : a.recente > b.recente ? -1 : 0))
+      .map((e) => e.rotulo);
   }, [lancamentos]);
 
   // Ocorrências do mês exibido, materializadas a partir das regras (§4.1).
