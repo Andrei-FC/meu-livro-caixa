@@ -117,18 +117,16 @@ export function CartaoFatura({
 
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100dvh', background: 'var(--bg-page)' }}>
-      <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-page)' }}>
-        <Header
-          variante="chuld"
-          titulo={cartao.nome}
-          fechar
-          onVoltar={onVoltar}
-          mostrarData
-          mesAno={`${MESES[mes]} ${ano}`}
-          onAnterior={() => mudarMes(-1)}
-          onProximo={() => mudarMes(1)}
-        />
-      </div>
+      <Header
+        variante="chuld"
+        titulo={cartao.nome}
+        fechar
+        onVoltar={onVoltar}
+        mostrarData
+        mesAno={`${MESES[mes]} ${ano}`}
+        onAnterior={() => mudarMes(-1)}
+        onProximo={() => mudarMes(1)}
+      />
 
       <main
         style={{

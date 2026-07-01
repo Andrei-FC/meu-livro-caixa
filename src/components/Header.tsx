@@ -17,6 +17,7 @@
  * Só visual + callbacks; não conhece estado (vem por props).
  */
 
+import { useEffect, useRef } from 'react';
 import { IconeMenu, IconeChevronLeft, IconeChevronRight, IconeAdd, IconeClose } from '../icons';
 
 const botaoPill: React.CSSProperties = {
@@ -79,13 +80,41 @@ type ChuldProps = {
 type Props = DefaultProps | ChuldProps;
 
 export function Header(props: Props) {
-  if (props.variante === 'chuld') return <HeaderChuld {...props} />;
-  return <HeaderDefault {...props} />;
+  // O header é sticky de forma UNIVERSAL (todas as telas) e publica a própria
+  // altura em `--altura-header` no :root, para que blocos que grudam logo
+  // abaixo (as tabs da Home, §5.1) se posicionem sem medir nada por conta
+  // própria. Publicar via CSS var (em vez de estado React na tela) sobrevive a
+  // desmontar/remontar a tela ao navegar (ex.: entrar/sair do drill-down): a
+  // cada montagem do header a variável é reescrita.
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const publicar = () =>
+      document.documentElement.style.setProperty('--altura-header', `${el.offsetHeight}px`);
+    publicar();
+    const ro = new ResizeObserver(publicar);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  if (props.variante === 'chuld') return <HeaderChuld {...props} innerRef={ref} />;
+  return <HeaderDefault {...props} innerRef={ref} />;
 }
 
-function HeaderDefault({ mesAno, onMenu, onAnterior, onProximo }: DefaultProps) {
+/** Estilo comum do <header> sticky (universal). Fundo opaco para a lista não
+ *  vazar por trás ao rolar. */
+const headerSticky: React.CSSProperties = {
+  position: 'sticky',
+  top: 0,
+  zIndex: 20,
+  background: 'var(--bg-page)',
+  paddingTop: 'var(--space-md)',
+};
+
+function HeaderDefault({ mesAno, onMenu, onAnterior, onProximo, innerRef }: DefaultProps & { innerRef: React.Ref<HTMLElement> }) {
   return (
-    <header style={{ paddingTop: 'var(--space-md)' }}>
+    <header ref={innerRef} style={headerSticky}>
       <div style={topBar}>
         {/* Menu — pill 40 */}
         <button type="button" aria-label="Menu" onClick={onMenu} style={{ ...botaoPill, width: 40, height: 40 }}>
@@ -114,9 +143,9 @@ function HeaderDefault({ mesAno, onMenu, onAnterior, onProximo }: DefaultProps) 
   );
 }
 
-function HeaderChuld({ titulo, onVoltar, fechar = false, fab = false, onFab, mostrarData = false, mesAno, onAnterior, onProximo }: ChuldProps) {
+function HeaderChuld({ titulo, onVoltar, fechar = false, fab = false, onFab, mostrarData = false, mesAno, onAnterior, onProximo, innerRef }: ChuldProps & { innerRef: React.Ref<HTMLElement> }) {
   return (
-    <header style={{ paddingTop: 'var(--space-md)' }}>
+    <header ref={innerRef} style={headerSticky}>
       <div style={topBar}>
         {/* Voltar (ou fechar) + título */}
         <div style={{ display: 'flex', flex: '1 0 0', alignItems: 'center', gap: 'var(--space-sm)', minWidth: 0 }}>

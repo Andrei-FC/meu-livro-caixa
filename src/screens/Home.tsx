@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Conta, Cartao, Lancamento, ExcecaoSerie, Transferencia } from '../types/db';
 import {
@@ -79,22 +79,6 @@ export function Home() {
   const [sheetAberto, setSheetAberto] = useState(false);
   const [menuAberto, setMenuAberto] = useState(false);
   const [emEdicao, setEmEdicao] = useState<OcorrenciaLancamento | null>(null);
-
-  // Header fixo + tabs sticky (§5.1): o header gruda no topo; as tabs grudam
-  // logo abaixo dele quando o card de resumo sai de vista ao rolar. Medimos a
-  // altura real do header (respeita safe-area do iPhone) para posicionar o
-  // `top` das tabs, em vez de um valor fixo frágil.
-  const headerRef = useRef<HTMLDivElement>(null);
-  const [alturaHeader, setAlturaHeader] = useState(0);
-  useEffect(() => {
-    const el = headerRef.current;
-    if (!el) return;
-    const medir = () => setAlturaHeader(el.offsetHeight);
-    medir();
-    const ro = new ResizeObserver(medir);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   // Roteamento por estado para as PÁGINAS PRÓPRIAS (§5.8) — telas cheias fora
   // das abas da Home (gerenciar/criar/editar conta e cartão). null = Home.
@@ -354,18 +338,13 @@ export function Home() {
 
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100dvh', position: 'relative' }}>
-      {/* ── Header: fixo no topo (menu + navegação de mês, §5.1) ── */}
-      <div
-        ref={headerRef}
-        style={{ position: 'sticky', top: 0, zIndex: 20, background: 'var(--bg-page)' }}
-      >
-        <Header
-          mesAno={`${MESES[mes]} ${ano}`}
-          onMenu={() => setMenuAberto(true)}
-          onAnterior={() => mudarMes(-1)}
-          onProximo={() => mudarMes(1)}
-        />
-      </div>
+      {/* ── Header: sticky universal vem do próprio componente ── */}
+      <Header
+        mesAno={`${MESES[mes]} ${ano}`}
+        onMenu={() => setMenuAberto(true)}
+        onAnterior={() => mudarMes(-1)}
+        onProximo={() => mudarMes(1)}
+      />
 
       {/* ── Menu drawer (§5.8) ── */}
       <MenuDrawer
@@ -380,11 +359,12 @@ export function Home() {
         <CardDeResumo entradas={entradas} saidas={saidas} saldoMes={saldoMes} herdado={herdado} />
       </div>
 
-      {/* ── Tabs: grudam logo abaixo do header quando o card sai de vista ── */}
+      {/* ── Tabs: grudam logo abaixo do header quando o card sai de vista.
+             `top` = altura publicada pelo Header em --altura-header. ── */}
       <div
         style={{
           position: 'sticky',
-          top: alturaHeader,
+          top: 'var(--altura-header, 0px)',
           zIndex: 10,
           background: 'var(--bg-page)',
           padding: 'var(--space-md) var(--space-lg) 0',
@@ -393,7 +373,20 @@ export function Home() {
         <Tabs ativa={aba} onMudar={setAba} />
       </div>
 
-      <main style={{ padding: 'var(--space-lg)', paddingBottom: 'calc(96px + env(safe-area-inset-bottom))' }}>
+      {/* min-height garante folga de rolagem suficiente para esconder o card
+          de resumo em QUALQUER aba — assim as tabs, uma vez docadas abaixo do
+          header, não "descem" ao trocar para uma aba curta (relatório vazio,
+          poucas contas). O card sempre pode sair de vista; a posição das tabs
+          fica estável entre abas. */}
+      <main
+        style={{
+          minHeight: '100dvh',
+          display: 'flex',
+          flexDirection: 'column',
+          padding: 'var(--space-lg)',
+          paddingBottom: 'calc(96px + env(safe-area-inset-bottom))',
+        }}
+      >
         {erro && (
           <p className="type-caption" style={{ color: 'var(--value-saida)' }}>Erro ao carregar: {erro}</p>
         )}
@@ -462,6 +455,20 @@ export function Home() {
             )}
           </>
         )}
+
+        {/* Rodapé escondido: só aparece ao rolar até a base (o min-height do
+            main garante a folga de rolagem). Easter egg discreto. */}
+        <p
+          className="type-caption"
+          style={{
+            marginTop: 'auto',
+            paddingTop: 'var(--space-xl)',
+            textAlign: 'center',
+            color: 'var(--text-muted)',
+          }}
+        >
+          nenhum lançamento escondido aqui :)
+        </p>
       </main>
 
       <FAB onClick={() => setSheetAberto(true)} />
