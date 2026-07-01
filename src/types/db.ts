@@ -18,6 +18,7 @@ export interface Conta {
 export interface Cartao {
   id: string;
   nome: string;
+  conta_id: string; // conta-corrente que paga a fatura (§4.4/§4.5) — NOT NULL
   previsao_mensal: number | null; // teto de previsão (§4.4); null = sem previsão (só acumula realizado)
   dia_fechamento: number;
   dia_pagamento: number;

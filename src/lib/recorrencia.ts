@@ -14,7 +14,7 @@
 //  - Âncora no dia do mês + clamp 29–31 no último dia, voltando ao dia-âncora
 //    nos meses que comportam. Nunca transborda para o mês seguinte (princípio 2).
 
-import type { Lancamento, Transferencia, ExcecaoSerie, Conta } from '../types/db';
+import type { Lancamento, Transferencia, ExcecaoSerie, Conta, Cartao } from '../types/db';
 
 /** Horizonte de projeção: meses à frente de hoje para recorrência indefinida. */
 export const HORIZONTE_MESES = 24;
@@ -369,6 +369,136 @@ export function planejarDivisao(
   return plano;
 }
 
+// ───────── Ciclo do cartão: fatura prevista × realizada (§4.4, §4.8) ─────────
+//
+// A fatura NÃO é tabela — é derivada. Este bloco é a FONTE ÚNICA que resolve,
+// para um cartão num mês do saldo, quanto ela pesa. Home, lista e saldo contínuo
+// consomem daqui — nada recalcula por conta própria.
+//
+// Dois eixos de tempo (§4.8):
+//   - FECHAMENTO (dia_fechamento): decide QUAL ciclo de compras compõe a fatura
+//     e quando a previsão vira realizado. O ciclo que FECHA no mês M contém
+//     compras em [dia_fechamento de M−1, dia_fechamento de M). Compra antes do
+//     fechamento entra na fatura que fecha nesse mês; a partir do fechamento,
+//     na do mês seguinte.
+//   - PAGAMENTO (dia_pagamento): decide EM QUE MÊS a fatura pesa no saldo. A
+//     fatura que fecha em M vence em M se dia_pagamento > dia_fechamento, senão
+//     em M+1. (Ex.: fecha 15, vence 20 → vence no mesmo mês; fecha 15, vence 05
+//     → vence no mês seguinte.)
+//
+// Fase (§4.4), do ponto de vista de HOJE, no ciclo que fecha em (cicloAno,
+// cicloMes):
+//   - futura   → o mês de fechamento ainda não chegou. Pesa a PREVISÃO (o
+//                placeholder segura o lugar no saldo projetado). Sem realizado
+//                ainda (ou parcial); a barra enche em runtime.
+//   - aberta   → estamos no mês de fechamento, antes do dia_fechamento. Pesa
+//                max(previsão, realizado): o placeholder segura, mas se o gasto
+//                já passou, o real manda (a barra estoura).
+//   - fechada  → passou o dia_fechamento (ou o mês de fechamento já passou). A
+//                previsão morre; pesa só o REALIZADO consolidado. Fato é fato.
+//
+// Sem previsão (previsao_mensal null): não há placeholder; futura/aberta pesam
+// o próprio realizado acumulado (sem barra — o componente já se auto-esconde).
+
+/** Índice de mês absoluto do ciclo que FECHA contendo uma compra na data dada.
+ *  Compra antes do dia_fechamento → fecha no mês da compra; a partir dele →
+ *  fecha no mês seguinte (§4.8). */
+function cicloDeFechamentoAbs(dataISO: string, diaFechamento: number): number {
+  const [a, m, d] = parteData(dataISO);
+  const base = indiceMes(a, m);
+  return d < diaFechamento ? base : base + 1;
+}
+
+export type FaseCiclo = 'futura' | 'aberta' | 'fechada';
+
+/** Fase do ciclo que fecha em `cicloAbs`, do ponto de vista de `hoje` (§4.4). */
+export function faseDoCiclo(cicloAbs: number, cartao: Cartao, hoje: Date): FaseCiclo {
+  const hojeAbs = indiceMes(hoje.getFullYear(), hoje.getMonth());
+  if (cicloAbs < hojeAbs) return 'fechada'; // ciclo de mês já passado: consolidado
+  if (cicloAbs > hojeAbs) return 'futura'; // ainda vai fechar num mês futuro
+  // Mês de fechamento é o corrente: antes do dia_fechamento = aberta; senão fechada.
+  return hoje.getDate() >= cartao.dia_fechamento ? 'fechada' : 'aberta';
+}
+
+/** Soma das compras (realizado) do ciclo que FECHA em `cicloAbs`, para um cartão.
+ *  Expande as regras de lançamento (à vista/parcela/recorrente) e soma as que
+ *  caem na janela [fechamento de M−1, fechamento de M). É o número que a barra
+ *  e o drill-down mostram. */
+export function realizadoDoCiclo(
+  lancamentos: Lancamento[],
+  cartao: Cartao,
+  cicloAbs: number,
+  hoje: Date,
+  excecoes?: IndiceExcecoes,
+): number {
+  let total = 0;
+  for (const oc of ocorrenciasDoCiclo(lancamentos, cartao, cicloAbs, hoje, excecoes)) {
+    total += oc.valor;
+  }
+  return total;
+}
+
+/** Ocorrências de cartão que compõem o ciclo que fecha em `cicloAbs` (para o
+ *  drill-down, §5.3). Materializa as regras nos meses que a janela do ciclo
+ *  toca e filtra pela data de fechamento. */
+export function ocorrenciasDoCiclo(
+  lancamentos: Lancamento[],
+  cartao: Cartao,
+  cicloAbs: number,
+  hoje: Date,
+  excecoes?: IndiceExcecoes,
+): OcorrenciaLancamento[] {
+  // O ciclo que fecha em cicloAbs abrange compras dos meses (cicloAbs−1) e
+  // cicloAbs (a janela cruza a virada de mês no dia_fechamento). Expandimos os
+  // dois meses e filtramos pela regra de fechamento.
+  const doCartao = lancamentos.filter((l) => l.cartao_id === cartao.id);
+  const out: OcorrenciaLancamento[] = [];
+  for (const mAbs of [cicloAbs - 1, cicloAbs]) {
+    const ano = Math.floor(mAbs / 12);
+    const mes = mAbs % 12;
+    for (const oc of lancamentosNoMes(doCartao, ano, mes, hoje, excecoes)) {
+      if (cicloDeFechamentoAbs(oc.data, cartao.dia_fechamento) === cicloAbs) out.push(oc);
+    }
+  }
+  return out;
+}
+
+/** Peso da fatura de um cartão no saldo do mês (alvoAno, alvoMes), aplicando
+ *  ciclo + fase + max(previsão, realizado) (§4.4). É a FONTE ÚNICA do débito de
+ *  cartão no fluxo de caixa; sempre ≥ 0 (a fatura é uma saída, o sinal é
+ *  aplicado por quem consome). Devolve 0 se nenhuma fatura vence nesse mês. */
+export function faturaNoMes(
+  lancamentos: Lancamento[],
+  cartao: Cartao,
+  alvoAno: number,
+  alvoMes: number,
+  hoje: Date,
+  excecoes?: IndiceExcecoes,
+): number {
+  const alvoAbs = indiceMes(alvoAno, alvoMes);
+  // Qual ciclo VENCE (pesa) neste mês? Inverte a regra de pagamento (§4.8):
+  // vencimento depois do fechamento → fatura do próprio mês; senão → mês anterior.
+  const cicloAbs = cartao.dia_pagamento > cartao.dia_fechamento ? alvoAbs : alvoAbs - 1;
+  if (cicloAbs < 0) return 0;
+
+  const realizado = realizadoDoCiclo(lancamentos, cartao, cicloAbs, hoje, excecoes);
+  const previsao = cartao.previsao_mensal;
+  const fase = faseDoCiclo(cicloAbs, cartao, hoje);
+
+  // Sem previsão: só o realizado acumulado, em qualquer fase (§4.4).
+  if (previsao == null || previsao <= 0) return realizado;
+
+  if (fase === 'fechada') return realizado; // consolidado: fato é fato
+  if (fase === 'aberta') return Math.max(previsao, realizado); // placeholder segura, real estoura
+  return Math.max(previsao, realizado); // futura: previsão projeta; se já houver compra maior, ela manda
+}
+
+/** Dia do mês em que a fatura de um cartão pesa no saldo (o dia_pagamento,
+ *  com clamp no último dia — §4.1). Usado pela lista para posicionar a linha. */
+export function diaPagamentoNoMes(cartao: Cartao, ano: number, mes: number): number {
+  return diaAncoraNoMes(cartao.dia_pagamento, ano, mes);
+}
+
 // ───────── Saldo contínuo (§4.7) ─────────
 //
 // O saldo rola de um mês para o seguinte: saldo(M) = herdado(M) + líquido(M),
@@ -403,7 +533,7 @@ export function acharAncora(
 /**
  * Líquido de um único mês (o "+200, −300…" daquele mês), em conta-corrente:
  *   + entradas  − saídas (sem cartão)
- *   − faturas de cartão que pesam no mês (realizado das compras do mês)
+ *   − faturas de cartão que VENCEM no mês (fonte única: faturaNoMes, §4.4/§4.8)
  *   − depósitos em poupança  + retiradas de poupança
  *   transferência corrente↔corrente é neutra (não entra)
  */
@@ -411,6 +541,7 @@ export function liquidoDoMes(
   lancamentos: Lancamento[],
   transferencias: Transferencia[],
   contas: Conta[],
+  cartoes: Cartao[],
   alvoAno: number,
   alvoMes: number,
   hoje: Date,
@@ -419,11 +550,18 @@ export function liquidoDoMes(
   const tipoConta = new Map(contas.map((c) => [c.id, c.tipo]));
   let total = 0;
 
-  // Lançamentos (inclui cartão: a compra de cartão pesa no líquido do mês em
-  // que cai — mantém a aproximação atual da Home; o ciclo fechamento×pagamento
-  // é refinamento futuro). Entrada soma, saída/cartão subtrai.
+  // Lançamentos de conta-corrente (cartão NÃO entra aqui — §4.8: a compra de
+  // cartão não pesa na data da compra; pesa pela fatura, na data do pagamento).
+  // Entrada soma, saída subtrai.
   for (const o of lancamentosNoMes(lancamentos, alvoAno, alvoMes, hoje, excecoes)) {
+    if (o.cartao_id != null) continue; // cartão pesa pela fatura, abaixo
     total += o.tipo === 'entrada' ? o.valor : -o.valor;
+  }
+
+  // Faturas de cartão que VENCEM neste mês (§4.4): max(previsão, realizado)
+  // enquanto abertas/futuras; realizado depois de fechar. Fonte única.
+  for (const k of cartoes) {
+    total -= faturaNoMes(lancamentos, k, alvoAno, alvoMes, hoje, excecoes);
   }
 
   // Transferências: só as que envolvem poupança alteram o disponível (§4.5).
@@ -447,6 +585,7 @@ export function saldoHerdado(
   lancamentos: Lancamento[],
   transferencias: Transferencia[],
   contas: Conta[],
+  cartoes: Cartao[],
   alvoAno: number,
   alvoMes: number,
   hoje: Date,
@@ -460,7 +599,102 @@ export function saldoHerdado(
 
   let acc = 0;
   for (let abs = inicio; abs < fim; abs++) {
-    acc += liquidoDoMes(lancamentos, transferencias, contas, Math.floor(abs / 12), abs % 12, hoje, excecoes);
+    acc += liquidoDoMes(lancamentos, transferencias, contas, cartoes, Math.floor(abs / 12), abs % 12, hoje, excecoes);
+  }
+  return acc;
+}
+
+// ───────── Saldo acumulado POR CONTA (§4.7, invariante da aba Contas) ─────────
+//
+// Espelha saldoHerdado + liquidoDoMes, mas DESAGREGADO por conta_id. O
+// invariante travado: a soma dos saldos de todas as correntes == saldo do topo
+// (herdado + líquido do mês corrente). Para isso, cada movimento é atribuído à
+// sua conta:
+//   - lançamento de débito (sem cartão) → conta_id do lançamento
+//   - fatura de cartão → conta_id do CARTÃO (a conta que paga, §4.4/§4.5)
+//   - transferência com poupança → debita/credita a corrente envolvida
+//   - transferência corrente↔corrente → neutra no total, mas MOVE entre contas
+//     (sai de uma, entra na outra) — daí aparecer no saldo de cada conta.
+//
+// Poupança fica de fora deste mapa (o Cofre é visão à parte, §4.5); só contas
+// correntes entram, garantindo que a soma bata com o saldo do mês.
+
+/** Líquido de um mês, por conta_id (só correntes). Mesma regra de liquidoDoMes,
+ *  mas mantendo a atribuição por conta — inclusive o lado a lado das
+ *  transferências entre correntes (que somam zero no total mas movem entre
+ *  contas). */
+function liquidoDoMesPorConta(
+  lancamentos: Lancamento[],
+  transferencias: Transferencia[],
+  contas: Conta[],
+  cartoes: Cartao[],
+  alvoAno: number,
+  alvoMes: number,
+  hoje: Date,
+  excecoes: IndiceExcecoes | undefined,
+  acc: Map<string, number>,
+): void {
+  const tipoConta = new Map(contas.map((c) => [c.id, c.tipo]));
+  const add = (id: string, v: number) => {
+    if (tipoConta.get(id) !== 'corrente') return; // só correntes no mapa de saldo
+    acc.set(id, (acc.get(id) ?? 0) + v);
+  };
+
+  // Lançamentos de débito (cartão não entra aqui — pesa pela fatura).
+  for (const o of lancamentosNoMes(lancamentos, alvoAno, alvoMes, hoje, excecoes)) {
+    if (o.cartao_id != null) continue;
+    add(o.conta_id, o.tipo === 'entrada' ? o.valor : -o.valor);
+  }
+
+  // Faturas de cartão que vencem no mês → debitam a conta pagadora (§4.4/§4.5).
+  for (const k of cartoes) {
+    const peso = faturaNoMes(lancamentos, k, alvoAno, alvoMes, hoje, excecoes);
+    if (peso !== 0) add(k.conta_id, -peso);
+  }
+
+  // Transferências: movem entre contas. Corrente↔corrente é neutra no TOTAL,
+  // mas cada lado afeta a conta correspondente. Poupança fica fora do mapa
+  // (add ignora não-correntes), então depósito some da corrente de origem e a
+  // retirada aparece na corrente de destino — coerente com §4.5.
+  for (const o of transferenciasNoMes(transferencias, alvoAno, alvoMes, hoje)) {
+    add(o.de_conta_id, -o.valor);
+    add(o.para_conta_id, o.valor);
+  }
+}
+
+/**
+ * Saldo acumulado por conta_id, da âncora até o fim do mês (alvoAno, alvoMes)
+ * INCLUSIVE — é o "quanto tem hoje" de cada conta. Diferente de saldoHerdado
+ * (que vai até o mês anterior); aqui incluímos o mês alvo porque o card de
+ * conta mostra o saldo corrente, não o herdado.
+ *
+ * Invariante: a soma dos valores deste mapa == saldoHerdado(alvo) +
+ * liquidoDoMes(alvo) == saldo do topo. Garantido porque toda atribuição usa a
+ * mesma expansão de regras e as mesmas faturas.
+ */
+export function saldoAcumuladoPorConta(
+  lancamentos: Lancamento[],
+  transferencias: Transferencia[],
+  contas: Conta[],
+  cartoes: Cartao[],
+  alvoAno: number,
+  alvoMes: number,
+  hoje: Date,
+  excecoes?: IndiceExcecoes,
+): Map<string, number> {
+  const acc = new Map<string, number>();
+  for (const c of contas) if (c.tipo === 'corrente') acc.set(c.id, 0); // toda corrente presente, mesmo zerada
+
+  const ancora = acharAncora(lancamentos, transferencias);
+  if (!ancora) return acc;
+
+  const inicio = mesAbs(ancora.ano, ancora.mes);
+  const fim = mesAbs(alvoAno, alvoMes); // inclusivo: acumula ATÉ o mês alvo
+  for (let abs = inicio; abs <= fim; abs++) {
+    liquidoDoMesPorConta(
+      lancamentos, transferencias, contas, cartoes,
+      Math.floor(abs / 12), abs % 12, hoje, excecoes, acc,
+    );
   }
   return acc;
 }

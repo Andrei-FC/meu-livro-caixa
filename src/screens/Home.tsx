@@ -6,6 +6,10 @@ import {
   indexarExcecoes,
   saldoHerdado,
   liquidoDoMes,
+  faturaNoMes,
+  realizadoDoCiclo,
+  diaPagamentoNoMes,
+  saldoAcumuladoPorConta,
   parteData,
   type OcorrenciaLancamento,
 } from '../lib/recorrencia';
@@ -30,6 +34,7 @@ import { GerenciarContas } from './GerenciarContas';
 import { GerenciarCartoes } from './GerenciarCartoes';
 import { CriarEditarConta } from './CriarEditarConta';
 import { CriarEditarCartao } from './CriarEditarCartao';
+import { CartaoFatura } from './CartaoFatura';
 
 /** Home real (§5.1). Compõe só a biblioteca de componentes.
  *  Estrutura do Figma (2009:11): TopBar (menu + nav de mês) → Card de resumo
@@ -79,7 +84,8 @@ export function Home() {
     | { tela: 'gerenciar-contas' }
     | { tela: 'gerenciar-cartoes' }
     | { tela: 'conta'; conta: Conta | null }
-    | { tela: 'cartao'; cartao: Cartao | null };
+    | { tela: 'cartao'; cartao: Cartao | null }
+    | { tela: 'drill-cartao'; cartao: Cartao };
   const [pagina, setPagina] = useState<Pagina | null>(null);
 
   const carregar = useCallback(() => {
@@ -138,14 +144,27 @@ export function Home() {
     [ocorrenciasDoMes],
   );
 
-  // Realizado por cartão no mês exibido (soma das ocorrências com cartao_id).
-  const realizadoPorCartao = useMemo(() => {
+  // Fatura que VENCE no mês exibido, por cartão — o que pesa no saldo (§4.4).
+  // Fonte única: faturaNoMes (ciclo + fase + max previsão/realizado). A lista
+  // usa isto para posicionar a linha da fatura no dia do pagamento e debitar.
+  const faturaDoMes = useMemo(() => {
     const m = new Map<string, number>();
-    for (const o of ocorrenciasDoMes) {
-      if (o.cartao_id) m.set(o.cartao_id, (m.get(o.cartao_id) ?? 0) + o.valor);
+    for (const k of cartoes) {
+      m.set(k.id, faturaNoMes(lancamentos, k, ano, mes, hoje, indiceExcecoes));
     }
     return m;
-  }, [ocorrenciasDoMes]);
+  }, [cartoes, lancamentos, ano, mes, hoje, indiceExcecoes]);
+
+  // Ciclo corrente (que fecha no mês de HOJE) por cartão — para a aba Cartões e
+  // para o display (realizado/fase) da linha de fatura no mês corrente.
+  const cicloCorrenteAbs = hoje.getFullYear() * 12 + hoje.getMonth();
+  const realizadoPorCartao = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const k of cartoes) {
+      m.set(k.id, realizadoDoCiclo(lancamentos, k, cicloCorrenteAbs, hoje, indiceExcecoes));
+    }
+    return m;
+  }, [cartoes, lancamentos, cicloCorrenteAbs, hoje, indiceExcecoes]);
 
   // Totais do mês (§4.7). Herdado virá do saldo contínuo; por ora 0.
   const { entradas, saidas } = useMemo(() => {
@@ -182,18 +201,36 @@ export function Home() {
     }
     return m;
   }, [lancamentos, hoje, indiceExcecoes]);
+  // Saldo acumulado por conta (§4.7) até o mês ATUAL — cards da tela Gerenciar
+  // Contas. Invariante: soma das correntes == saldo do topo. A fatura de cada
+  // cartão debita a conta pagadora (cartao.conta_id).
+  const saldosPorConta = useMemo(
+    () => saldoAcumuladoPorConta(
+      lancamentos, transferencias, contas, cartoes,
+      hoje.getFullYear(), hoje.getMonth(), hoje, indiceExcecoes,
+    ),
+    [lancamentos, transferencias, contas, cartoes, hoje, indiceExcecoes],
+  );
+  // Saldo acumulado por conta no MÊS EXIBIDO — cards da aba Contas da Home
+  // (acompanha a navegação de mês).
+  const saldosPorContaMesExibido = useMemo(
+    () => saldoAcumuladoPorConta(
+      lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes,
+    ),
+    [lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes],
+  );
   // Saldo herdado: acumulado desde a âncora (1º registro) até o mês anterior
   // (§4.7). Calculado na leitura e memoizado — barato porque expande regras,
   // não linhas. Projeção futura limitada ao horizonte do motor.
   const herdado = useMemo(
-    () => saldoHerdado(lancamentos, transferencias, contas, ano, mes, hoje, indiceExcecoes),
-    [lancamentos, transferencias, contas, ano, mes, hoje, indiceExcecoes],
+    () => saldoHerdado(lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes),
+    [lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes],
   );
   // Líquido do mês exibido pela MESMA regra do acúmulo (inclui cartão e
   // poupança), para o saldo do mês bater com o que ele herda ao mês seguinte.
   const liquidoMes = useMemo(
-    () => liquidoDoMes(lancamentos, transferencias, contas, ano, mes, hoje, indiceExcecoes),
-    [lancamentos, transferencias, contas, ano, mes, hoje, indiceExcecoes],
+    () => liquidoDoMes(lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes),
+    [lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes],
   );
   const saldoMes = herdado + liquidoMes;
 
@@ -224,6 +261,7 @@ export function Home() {
       <GerenciarContas
         contas={contas}
         entradasSaidas={porContaMesAtual}
+        saldos={saldosPorConta}
         onVoltar={() => setPagina(null)}
         onCriar={() => setPagina({ tela: 'conta', conta: null })}
         onEditar={(c) => setPagina({ tela: 'conta', conta: c })}
@@ -253,8 +291,21 @@ export function Home() {
     return (
       <CriarEditarCartao
         cartao={pagina.cartao}
+        contas={contas}
         onVoltar={() => setPagina({ tela: 'gerenciar-cartoes' })}
         onSalvou={() => { carregar(); }}
+      />
+    );
+  }
+  if (pagina?.tela === 'drill-cartao') {
+    return (
+      <CartaoFatura
+        cartao={pagina.cartao}
+        lancamentos={lancamentos}
+        excecoes={indiceExcecoes}
+        hoje={hoje}
+        onVoltar={() => setPagina(null)}
+        onEditar={(o) => { setPagina(null); setEmEdicao(o); }}
       />
     );
   }
@@ -302,9 +353,11 @@ export function Home() {
                 ocorrencias={ocorrenciasLista}
                 cartoes={cartoes}
                 contaPorId={contaPorId}
+                faturaDoMes={faturaDoMes}
                 realizadoPorCartao={realizadoPorCartao}
                 fase={(k) => faseFatura(k, ano, mes, hoje)}
                 onEditar={setEmEdicao}
+                onAbrirCartao={(k) => setPagina({ tela: 'drill-cartao', cartao: k })}
                 saldoInicial={herdado}
               />
             )}
@@ -313,9 +366,9 @@ export function Home() {
               <Entidades vazio="Nenhuma conta ativa.">
                 {contas.map((c) =>
                   c.tipo === 'poupanca' ? (
-                    <CardDeEntidade key={c.id} tipo="poupanca" nome={c.nome} valor={0 /* TODO §4.7 */} tema={c.tema ?? undefined} />
+                    <CardDeEntidade key={c.id} tipo="poupanca" nome={c.nome} valor={0 /* TODO §4.7 poupança */} tema={c.tema ?? undefined} />
                   ) : (
-                    <CardDeEntidade key={c.id} tipo="conta" nome={c.nome} valor={0 /* TODO §4.7 */} tema={c.tema ?? undefined} banco={c.icone} entradas={porConta.get(c.id)?.entradas ?? 0} saidas={porConta.get(c.id)?.saidas ?? 0} />
+                    <CardDeEntidade key={c.id} tipo="conta" nome={c.nome} valor={saldosPorContaMesExibido.get(c.id) ?? 0} tema={c.tema ?? undefined} banco={c.icone} entradas={porConta.get(c.id)?.entradas ?? 0} saidas={porConta.get(c.id)?.saidas ?? 0} />
                   ),
                 )}
               </Entidades>
@@ -392,16 +445,22 @@ function Lancamentos(props: {
   ocorrencias: OcorrenciaLancamento[];
   cartoes: Cartao[];
   contaPorId: Map<string, Conta>;
+  /** Fatura que VENCE no mês exibido, por cartão (o que pesa no saldo, §4.4). */
+  faturaDoMes: Map<string, number>;
+  /** Realizado do ciclo corrente, por cartão (para o display da linha). */
   realizadoPorCartao: Map<string, number>;
   fase: (k: Cartao) => FaseFatura;
   onEditar: (o: OcorrenciaLancamento) => void;
+  onAbrirCartao: (k: Cartao) => void;
   saldoInicial: number;
 }) {
-  const { ano, mes, ocorrencias, cartoes, contaPorId, realizadoPorCartao, fase, onEditar, saldoInicial } = props;
+  const { ano, mes, ocorrencias, cartoes, contaPorId, faturaDoMes, realizadoPorCartao, fase, onEditar, onAbrirCartao, saldoInicial } = props;
 
   // Agrupa por dia. A data de cada ocorrência já vem resolvida pelo motor
-  // (§4.1: âncora no dia + clamp). A fatura entra no dia do pagamento (fluxo de
-  // caixa, §4.8); por ora ancora no dia_pagamento dentro do mês exibido.
+  // (§4.1: âncora no dia + clamp). A fatura de cada cartão entra no DIA DO
+  // PAGAMENTO (fluxo de caixa, §4.8) e só nos meses em que uma fatura vence
+  // (faturaDoMes > 0). O valor que pesa é a fatura (max previsão/realizado, ou
+  // realizado se fechada) — fonte única do motor.
   const grupos = useMemo(() => {
     const porDia = new Map<number, ItemDia[]>();
     for (const o of ocorrencias) {
@@ -409,7 +468,9 @@ function Lancamentos(props: {
       (porDia.get(dia) ?? porDia.set(dia, []).get(dia)!).push({ kind: 'lancamento', o });
     }
     for (const k of cartoes) {
-      const dia = Math.min(k.dia_pagamento, 28); // clamp defensivo; §4.1 trata borda
+      const peso = faturaDoMes.get(k.id) ?? 0;
+      if (peso <= 0) continue; // nenhuma fatura vence neste mês para este cartão
+      const dia = diaPagamentoNoMes(k, ano, mes);
       (porDia.get(dia) ?? porDia.set(dia, []).get(dia)!).push({ kind: 'fatura', k });
     }
     // Saldo acumulado dia a dia, partindo do herdado do mês (§4.7).
@@ -420,11 +481,11 @@ function Lancamentos(props: {
         const itens = porDia.get(dia)!;
         for (const it of itens) {
           if (it.kind === 'lancamento') acc += it.o.tipo === 'entrada' ? it.o.valor : -it.o.valor;
-          else acc -= realizadoPorCartao.get(it.k.id) ?? 0; // fatura sai da conta no pagamento
+          else acc -= faturaDoMes.get(it.k.id) ?? 0; // fatura sai da conta no pagamento
         }
         return { dia, itens, saldoAcumulado: acc };
       });
-  }, [ocorrencias, cartoes, realizadoPorCartao, saldoInicial]);
+  }, [ocorrencias, cartoes, faturaDoMes, saldoInicial, ano, mes]);
 
   if (grupos.length === 0) {
     return (
@@ -466,11 +527,11 @@ function Lancamentos(props: {
                   <LinhaDeFatura
                     key={`fat-${it.k.id}-${i}`}
                     titulo={it.k.nome}
-                    tagTexto={`Cartão · fecha dia ${it.k.dia_fechamento}`}
+                    tagTexto={contaPorId.get(it.k.conta_id)?.nome ?? 'Cartão'}
                     fase={fase(it.k)}
                     realizado={realizadoPorCartao.get(it.k.id) ?? 0}
                     previsao={it.k.previsao_mensal}
-                    onAbrir={() => { /* TODO: drill-down (§5.3) */ }}
+                    onAbrir={() => onAbrirCartao(it.k)}
                   />
                 ),
               )}

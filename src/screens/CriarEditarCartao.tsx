@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Header, Input, Botao, SeletorDeTema, CampoSeletor, SeletorDeIcone } from '../components';
+import { Header, Input, Botao, SeletorDeTema, CampoSeletor, SeletorDeIcone, SeletorContaCartao } from '../components';
 import type { ChaveTema } from '../components/SeletorDeTema';
-import { BANCOS, BANDEIRAS, LogoBanco, LogoBandeira } from '../icons';
+import { BANCOS, BANDEIRAS, LogoBanco, LogoBandeira, IconeImage, IconeChevronRight } from '../icons';
 import { formatarBR } from '../lib/formato';
 import { supabase } from '../lib/supabase';
-import type { Cartao } from '../types/db';
+import type { Cartao, Conta } from '../types/db';
 
 /**
  * Criar/Editar Cartão — §5.8, §4.4, §4.9, §4.10, Figma 2046:451.
@@ -21,6 +21,8 @@ import type { Cartao } from '../types/db';
 
 type Props = {
   cartao: Cartao | null;
+  /** Contas ativas — para escolher a conta que paga a fatura (§4.4/§4.5). */
+  contas: Conta[];
   onVoltar: () => void;
   onSalvou: () => void;
 };
@@ -41,25 +43,31 @@ function clampDia(s: string): string {
   return String(Math.min(31, Math.max(1, Number(n))));
 }
 
-export function CriarEditarCartao({ cartao, onVoltar, onSalvou }: Props) {
+export function CriarEditarCartao({ cartao, contas, onVoltar, onSalvou }: Props) {
   const editando = cartao !== null;
+  const correntes = contas.filter((c) => c.tipo === 'corrente');
   const [nome, setNome] = useState(cartao?.nome ?? '');
   const [digitos, setDigitos] = useState(cartao ? reaisParaCentavos(cartao.previsao_mensal) : '');
   const [fechaDia, setFechaDia] = useState(cartao ? String(cartao.dia_fechamento) : '');
   const [venceDia, setVenceDia] = useState(cartao ? String(cartao.dia_pagamento) : '');
+  const [contaId, setContaId] = useState<string | null>(
+    cartao?.conta_id ?? (correntes.length === 1 ? correntes[0].id : null),
+  );
   const [tema, setTema] = useState<string | null>(cartao?.tema ?? null);
   const [banco, setBanco] = useState<string | null>(cartao?.banco ?? null);
   const [bandeira, setBandeira] = useState<string | null>(cartao?.bandeira ?? null);
-  const [sheet, setSheet] = useState<null | 'banco' | 'bandeira'>(null);
+  const [sheet, setSheet] = useState<null | 'banco' | 'bandeira' | 'conta'>(null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+
+  const contaSel = correntes.find((c) => c.id === contaId) ?? null;
 
   // Previsão é opcional (§4.4): sem valor → null (cartão só acumula o realizado,
   // sem barra). Só entra no cálculo quando o usuário digita algo.
   const temPrevisao = digitos !== '';
   const previsao = temPrevisao ? centavosParaReais(digitos) : null;
   const podeSalvar =
-    nome.trim().length > 0 && fechaDia !== '' && venceDia !== '' && !salvando;
+    nome.trim().length > 0 && fechaDia !== '' && venceDia !== '' && contaId !== null && !salvando;
 
   async function salvar() {
     setErro(null);
@@ -67,6 +75,7 @@ export function CriarEditarCartao({ cartao, onVoltar, onSalvou }: Props) {
     try {
       const payload = {
         nome: nome.trim(),
+        conta_id: contaId,
         previsao_mensal: previsao,
         dia_fechamento: Number(fechaDia),
         dia_pagamento: Number(venceDia),
@@ -162,6 +171,56 @@ export function CriarEditarCartao({ cartao, onVoltar, onSalvou }: Props) {
           </div>
         </div>
 
+        {/* Conta que paga a fatura (§4.4/§4.5) — abre o seletor de contas */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span className="type-label" style={{ color: 'var(--text-secondary)' }}>
+            Conta que será debitado o cartão
+          </span>
+          <button
+            type="button"
+            onClick={() => setSheet('conta')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 'var(--space-md)',
+              padding: '12px 14px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-default)',
+              background: 'var(--bg-surface)',
+              width: '100%',
+              textAlign: 'left',
+              cursor: 'pointer',
+            }}
+          >
+            <span
+              aria-hidden
+              data-card-theme={contaSel?.tema ?? undefined}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 'var(--radius-sm)',
+                background: contaSel?.tema ? 'var(--theme-bg)' : 'var(--p-slate-400)',
+                color: contaSel?.tema ? 'var(--theme-text)' : 'var(--p-white)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flex: '0 0 auto',
+              }}
+            >
+              <IconeImage tamanho={18} />
+            </span>
+            <span
+              className="type-body"
+              style={{ flex: '1 1 auto', color: contaSel ? 'var(--text-primary)' : 'var(--text-muted)' }}
+            >
+              {contaSel ? contaSel.nome : 'Escolher conta'}
+            </span>
+            <span style={{ flex: '0 0 auto', display: 'inline-flex', color: 'var(--text-muted)' }} aria-hidden>
+              <IconeChevronRight />
+            </span>
+          </button>
+        </div>
+
         {/* Tema (§4.9) */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
           <span className="type-label" style={{ color: 'var(--text-secondary)' }}>Tema</span>
@@ -182,6 +241,18 @@ export function CriarEditarCartao({ cartao, onVoltar, onSalvou }: Props) {
 
         {erro && <span className="type-caption" style={{ color: 'var(--value-saida)' }}>{erro}</span>}
       </div>
+
+      <SeletorContaCartao
+        aberto={sheet === 'conta'}
+        contexto="cartao-conta"
+        contas={correntes}
+        cartoes={[]}
+        onFechar={() => setSheet(null)}
+        onSelecionar={(sel) => {
+          if (sel.kind === 'conta') setContaId(sel.conta.id);
+          setSheet(null);
+        }}
+      />
 
       <SeletorDeIcone
         aberto={sheet === 'banco'}

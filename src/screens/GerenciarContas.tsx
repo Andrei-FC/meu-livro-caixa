@@ -19,12 +19,14 @@ type Props = {
   contas: Conta[];
   /** Entradas/saídas do mês corrente por conta_id. */
   entradasSaidas: EntradasSaidas;
+  /** Saldo acumulado (§4.7) por conta_id, até o mês corrente. */
+  saldos: Map<string, number>;
   onVoltar: () => void;
   onCriar: () => void;
   onEditar: (conta: Conta) => void;
 };
 
-export function GerenciarContas({ contas, entradasSaidas, onVoltar, onCriar, onEditar }: Props) {
+export function GerenciarContas({ contas, entradasSaidas, saldos, onVoltar, onCriar, onEditar }: Props) {
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100dvh', background: 'var(--bg-page)' }}>
       <Header variante="chuld" titulo="Contas" fab onVoltar={onVoltar} onFab={onCriar} />
@@ -47,7 +49,7 @@ export function GerenciarContas({ contas, entradasSaidas, onVoltar, onCriar, onE
                 {c.tipo === 'poupanca' ? (
                   <CardDeEntidade tipo="poupanca" nome={c.nome} valor={0 /* TODO §4.7 */} tema={c.tema ?? undefined} />
                 ) : (
-                  <CardDeEntidade tipo="conta" nome={c.nome} valor={0 /* TODO §4.7 */} tema={c.tema ?? undefined} banco={c.icone} entradas={es.entradas} saidas={es.saidas} />
+                  <CardDeEntidade tipo="conta" nome={c.nome} valor={saldos.get(c.id) ?? 0} tema={c.tema ?? undefined} banco={c.icone} entradas={es.entradas} saidas={es.saidas} />
                 )}
               </button>
             );

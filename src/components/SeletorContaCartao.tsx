@@ -15,13 +15,14 @@ import type { Conta, Cartao } from '../types/db';
  * Linha = swatch (tema/ícone) + nome. Toca → seleciona e fecha.
  */
 
-export type ContextoSeletor = 'saida' | 'entrada' | 'transf-saida' | 'transf-destino';
+export type ContextoSeletor = 'saida' | 'entrada' | 'transf-saida' | 'transf-destino' | 'cartao-conta';
 
 const TITULO: Record<ContextoSeletor, string> = {
   saida: 'Onde saiu o gasto?',
   entrada: 'Para onde vai a receita?',
   'transf-saida': 'Selecione a conta de saída',
   'transf-destino': 'Selecione a conta de destino',
+  'cartao-conta': 'Qual a conta desse cartão?',
 };
 
 /** Linha de seleção: swatch temático (data-card-theme → --theme-bg/--theme-text,
@@ -49,12 +50,13 @@ export function SeletorContaCartao({
   onSelecionar,
 }: Props) {
   const ehTransferencia = contexto === 'transf-saida' || contexto === 'transf-destino';
-  // Transferência só lista contas-corrente e poupanças; gasto/receita listam
-  // correntes e cartões. Poupança entra na lista de contas em transferência.
+  const ehCartaoConta = contexto === 'cartao-conta';
+  // Transferência lista correntes + poupanças. cartao-conta lista só correntes
+  // (a conta pagadora do cartão, §4.5). Gasto/receita: correntes (+ cartões).
   const correntes = contas.filter((c) =>
     ehTransferencia ? true : c.tipo === 'corrente',
   );
-  const mostrarCartoes = !ehTransferencia && cartoes.length > 0;
+  const mostrarCartoes = !ehTransferencia && !ehCartaoConta && cartoes.length > 0;
 
   return (
     <BottomSheet
