@@ -334,6 +334,7 @@ export function EditarSheet({
             onChange={(e) => setDigitos(e.target.value.replace(/\D/g, '').slice(0, 12))}
             inputMode="numeric"
             aria-label="Valor em reais"
+            autoFocus
             style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1 }}
           />
         </button>
