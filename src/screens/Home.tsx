@@ -155,16 +155,19 @@ export function Home() {
     return m;
   }, [cartoes, lancamentos, ano, mes, hoje, indiceExcecoes]);
 
-  // Ciclo corrente (que fecha no mês de HOJE) por cartão — para a aba Cartões e
-  // para o display (realizado/fase) da linha de fatura no mês corrente.
-  const cicloCorrenteAbs = hoje.getFullYear() * 12 + hoje.getMonth();
+  // Realizado do ciclo que VENCE no mês exibido, por cartão — para o display da
+  // linha de fatura (o "R$ X / previsão"). Deve seguir o mesmo ciclo que
+  // faturaNoMes usa (o que vence neste mês), senão a linha de um mês futuro
+  // mostraria o realizado de outro ciclo. Regra de qual ciclo vence: §4.8.
   const realizadoPorCartao = useMemo(() => {
+    const alvoAbs = ano * 12 + mes;
     const m = new Map<string, number>();
     for (const k of cartoes) {
-      m.set(k.id, realizadoDoCiclo(lancamentos, k, cicloCorrenteAbs, hoje, indiceExcecoes));
+      const cicloAbs = k.dia_pagamento > k.dia_fechamento ? alvoAbs : alvoAbs - 1;
+      m.set(k.id, cicloAbs < 0 ? 0 : realizadoDoCiclo(lancamentos, k, cicloAbs, hoje, indiceExcecoes));
     }
     return m;
-  }, [cartoes, lancamentos, cicloCorrenteAbs, hoje, indiceExcecoes]);
+  }, [cartoes, lancamentos, ano, mes, hoje, indiceExcecoes]);
 
   // Totais do mês (§4.7). Herdado virá do saldo contínuo; por ora 0.
   const { entradas, saidas } = useMemo(() => {
