@@ -179,10 +179,15 @@ export function Home() {
     () => categoriasDoMes(ocorrenciasDoMes),
     [ocorrenciasDoMes],
   );
-  const maiorGasto = useMemo(() => maiorGastoDoMes(categoriasRelatorio), [categoriasRelatorio]);
   const recorte = useMemo(
     () => recorteAssinaturas(ocorrenciasDoMes, contas, cartoes),
     [ocorrenciasDoMes, contas, cartoes],
+  );
+  // Régua comum das barras: maior entre as categorias soltas e o bloco da
+  // gaveta de assinaturas, para tudo ficar na mesma escala.
+  const maiorGasto = useMemo(
+    () => maiorGastoDoMes(categoriasRelatorio, recorte.total),
+    [categoriasRelatorio, recorte.total],
   );
 
   // Totais do mês (§4.7). Herdado virá do saldo contínuo; por ora 0.

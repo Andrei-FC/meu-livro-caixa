@@ -56,6 +56,12 @@ export interface CategoriaRelatorio {
  * (§4.8). Débito e crédito da mesma categoria somam juntos; a fatia no cartão é
  * um recorte (soma das ocorrências com cartao_id), não uma linha à parte.
  *
+ * Assinaturas (§3.3) NÃO entram aqui: elas vivem exclusivamente na gaveta de
+ * assinaturas, que é o guarda-chuva delas deslocado da lista para dar destaque.
+ * Cada serviço é a sua própria categoria (Netflix ≠ HBO); mostrá-los também na
+ * lista de cima duplicaria o mesmo lançamento no relatório. A invariante do
+ * total continua fechando: Σ categorias soltas + Σ gaveta = total de saídas.
+ *
  * A chave de agrupamento é a descrição normalizada (minúsculas, sem espaços nas
  * pontas — §4.6); o nome de exibição é a forma da última ocorrência vista.
  * Ordenado por total desc (maior gasto primeiro), como no design.
@@ -65,6 +71,7 @@ export function categoriasDoMes(ocorrencias: OcorrenciaLancamento[]): CategoriaR
 
   for (const o of ocorrencias) {
     if (o.tipo !== 'saida') continue; // só despesa entra no relatório (§5.5)
+    if (o.assinatura) continue; // assinatura vive só na gaveta (evita duplicação)
     const chave = o.descricao.trim().toLowerCase();
     if (!chave) continue;
     const acc = porChave.get(chave) ?? { nome: o.descricao.trim(), total: 0, noCartao: 0 };
@@ -79,20 +86,26 @@ export function categoriasDoMes(ocorrencias: OcorrenciaLancamento[]): CategoriaR
     .sort((a, b) => b.total - a.total);
 }
 
-/** Maior total de categoria do mês — escala comum das barras (categorias e do
- *  recorte de assinaturas). 0 se não há saídas. */
-export function maiorGastoDoMes(categorias: CategoriaRelatorio[]): number {
-  return categorias.reduce((max, c) => Math.max(max, c.total), 0);
+/** Maior gasto do mês — régua comum das barras (categorias soltas E o bloco de
+ *  assinaturas na mesma escala). Recebe o total da gaveta para que a barra de
+ *  assinaturas seja proporcional ao mesmo teto das categorias. 0 se nada gasto. */
+export function maiorGastoDoMes(categorias: CategoriaRelatorio[], totalAssinaturas = 0): number {
+  const maxCat = categorias.reduce((max, c) => Math.max(max, c.total), 0);
+  return Math.max(maxCat, totalAssinaturas);
 }
 
-// ───────── Recorte de assinaturas (§5.5) ─────────
+// ───────── Gaveta de assinaturas (§5.5) ─────────
 //
-// LENTE sobre lançamentos já contados nas suas categorias — não adiciona nem
-// remove nenhuma linha, não afeta saldo (§5.5). A unidade é a SÉRIE (serie_id):
-// Netflix ≠ HBO, cada uma listada individualmente. Marca = flag `assinatura`
-// (§3.3), atributo da série. O meio de pagamento é rótulo de leitura derivado do
-// lançamento (nome do cartão se houver cartao_id, senão nome da conta) — sem
-// campo novo no schema.
+// GUARDA-CHUVA das assinaturas, deslocado da lista de categorias para ganhar
+// destaque. Cada assinatura é a sua própria categoria (Netflix ≠ HBO ≠ YouTube)
+// e é agregada por SÉRIE (serie_id) para o usuário ver quanto cada serviço come
+// do orçamento. Como estas séries saem da lista superior (categoriasDoMes as
+// pula), NÃO há duplicação: cada lançamento aparece uma vez só no relatório, e
+// a soma fecha — Σ categorias soltas + Σ gaveta = total de saídas.
+//
+// Marca = flag `assinatura` (§3.3), atributo da série. O meio de pagamento é
+// rótulo de leitura derivado do lançamento (nome do cartão se houver cartao_id,
+// senão nome da conta) — sem campo novo no schema.
 
 /** Uma assinatura individual no recorte (uma série marcada). */
 export interface Assinatura {
