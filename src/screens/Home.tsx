@@ -29,8 +29,10 @@ import {
   type DestinoMenu,
   LancarSheet,
   EditarSheet,
+  Relatorio,
 } from '../components';
 import { GerenciarContas } from './GerenciarContas';
+import { categoriasDoMes, maiorGastoDoMes, recorteAssinaturas } from '../lib/relatorio';
 import { GerenciarCartoes } from './GerenciarCartoes';
 import { CriarEditarConta } from './CriarEditarConta';
 import { CriarEditarCartao } from './CriarEditarCartao';
@@ -168,6 +170,20 @@ export function Home() {
     }
     return m;
   }, [cartoes, lancamentos, ano, mes, hoje, indiceExcecoes]);
+
+  // Relatório (§5.5, §4.8) — eixo de CONSUMO, pela data da compra. Usa
+  // ocorrenciasDoMes (TODAS, inclusive cartão): a compra de cartão conta na sua
+  // categoria no mês da compra, não some para dentro da fatura (o oposto da
+  // lista da Home, que é fluxo de caixa). Só saídas entram no relatório.
+  const categoriasRelatorio = useMemo(
+    () => categoriasDoMes(ocorrenciasDoMes),
+    [ocorrenciasDoMes],
+  );
+  const maiorGasto = useMemo(() => maiorGastoDoMes(categoriasRelatorio), [categoriasRelatorio]);
+  const recorte = useMemo(
+    () => recorteAssinaturas(ocorrenciasDoMes, contas, cartoes),
+    [ocorrenciasDoMes, contas, cartoes],
+  );
 
   // Totais do mês (§4.7). Herdado virá do saldo contínuo; por ora 0.
   const { entradas, saidas } = useMemo(() => {
@@ -407,7 +423,7 @@ export function Home() {
             )}
 
             {aba === 'relatorio' && (
-              <p className="type-caption" style={{ color: 'var(--text-muted)' }}>Relatório — em construção (§5.5).</p>
+              <Relatorio categorias={categoriasRelatorio} maiorGasto={maiorGasto} recorte={recorte} />
             )}
           </>
         )}
