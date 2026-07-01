@@ -50,71 +50,153 @@ export function Toggle({ modo, onMudar }: { modo: ModoLancamento; onMudar: (m: M
 }
 
 export function CampoDescricao({
-  valor, onMudar, sugestoes, onEscolherSugestao, obrigatorio,
+  valor, onMudar, sugestoes, onEscolherSugestao, obrigatorio, iniciaTravada = false,
 }: {
   valor: string;
   onMudar: (s: string) => void;
   sugestoes: string[];
   onEscolherSugestao: (s: string) => void;
   obrigatorio: boolean;
+  /** Abre já com a categoria travada como pill (usado ao editar um lançamento
+   *  cuja descrição já é uma categoria existente). */
+  iniciaTravada?: boolean;
 }) {
   const [focado, setFocado] = useState(false);
+  // "Travada" = o usuário tocou numa sugestão (ou abriu editando uma categoria
+  // existente). A categoria vira uma PILL dentro do campo, sob o guarda-chuva
+  // daquela categoria (§4.6). O ✕ destrava e volta a ser texto livre. A string
+  // `valor` que vai pro banco é a mesma nos dois estados — a pill é só a forma
+  // visual de "isto casou com uma categoria que já existe".
+  const [travada, setTravada] = useState(iniciaTravada);
+
+  function escolher(s: string) {
+    onEscolherSugestao(s);
+    setTravada(true);
+    setFocado(false);
+  }
+  function destravar() {
+    setTravada(false);
+    // devolve o foco ao input para o usuário continuar digitando
+    setFocado(true);
+  }
+
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 6, position: 'relative' }}>
       <span className="type-label" style={{ color: 'var(--text-secondary)' }}>
         Descrição{!obrigatorio && ' (opcional)'}
       </span>
-      <input
-        value={valor}
-        onChange={(e) => onMudar(e.target.value)}
-        onFocus={() => setFocado(true)}
-        onBlur={() => setTimeout(() => setFocado(false), 120 /* permite clicar na sugestão */)}
-        placeholder="Mercado, aluguel, salário…"
-        style={{
-          padding: '12px 14px',
-          borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--border-default)',
-          background: 'var(--bg-surface)',
-          color: 'var(--text-primary)',
-          fontFamily: 'Inter, system-ui, sans-serif',
-          fontSize: 16,
-          outline: 'none',
-          width: '100%',
-        }}
-      />
-      {focado && sugestoes.length > 0 && (
+
+      {travada && valor.trim() ? (
+        // Estado travado: pill da categoria dentro de um campo do mesmo tamanho.
         <div
           style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            right: 0,
-            marginTop: 4,
-            background: 'var(--bg-elevated)',
-            border: '1px solid var(--border-default)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            minHeight: 46, // alinha com a altura do input (12+14 pad + linha)
+            padding: '8px 12px',
             borderRadius: 'var(--radius-md)',
-            overflow: 'hidden',
-            zIndex: 5,
-            boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+            border: '1px solid var(--border-default)',
+            background: 'var(--bg-surface)',
           }}
         >
-          {sugestoes.map((s) => (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '3px 8px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'var(--accent-subtle)',
+              border: '1px solid var(--accent-default)',
+              maxWidth: '100%',
+            }}
+          >
+            <span
+              className="type-body-small-strong"
+              style={{ color: 'var(--accent-default)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
+              {valor.trim()}
+            </span>
             <button
-              key={s}
               type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => onEscolherSugestao(s)}
-              className="type-body"
+              onClick={destravar}
+              aria-label="Trocar categoria"
               style={{
-                display: 'block', width: '100%', textAlign: 'left',
-                padding: '10px 14px', border: 'none', background: 'transparent',
-                color: 'var(--text-primary)', cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 16,
+                height: 16,
+                padding: 0,
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                color: 'var(--accent-default)',
+                flexShrink: 0,
               }}
             >
-              {s}
+              <svg width={12} height={12} viewBox="0 0 12 12" fill="none" aria-hidden>
+                <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" />
+              </svg>
             </button>
-          ))}
+          </span>
         </div>
+      ) : (
+        <>
+          <input
+            value={valor}
+            onChange={(e) => { onMudar(e.target.value); if (travada) setTravada(false); }}
+            onFocus={() => setFocado(true)}
+            onBlur={() => setTimeout(() => setFocado(false), 120 /* permite clicar na sugestão */)}
+            placeholder="Mercado, aluguel, salário…"
+            style={{
+              padding: '12px 14px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-default)',
+              background: 'var(--bg-surface)',
+              color: 'var(--text-primary)',
+              fontFamily: 'Inter, system-ui, sans-serif',
+              fontSize: 16,
+              outline: 'none',
+              width: '100%',
+            }}
+          />
+          {focado && sugestoes.length > 0 && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                marginTop: 4,
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-default)',
+                borderRadius: 'var(--radius-md)',
+                overflow: 'hidden',
+                zIndex: 5,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+              }}
+            >
+              {sugestoes.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => escolher(s)}
+                  className="type-body"
+                  style={{
+                    display: 'block', width: '100%', textAlign: 'left',
+                    padding: '10px 14px', border: 'none', background: 'transparent',
+                    color: 'var(--text-primary)', cursor: 'pointer',
+                  }}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </label>
   );

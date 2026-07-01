@@ -245,6 +245,7 @@ export function LancarSheet({
 
           {/* Descrição (gasto/receita e, opcional, transferência) */}
           <CampoDescricao
+            key={aberto ? 'aberto' : 'fechado'}
             valor={descricao}
             onMudar={setDescricao}
             sugestoes={sugestoes}

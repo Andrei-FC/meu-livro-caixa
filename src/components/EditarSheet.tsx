@@ -330,10 +330,14 @@ export function EditarSheet({
           )}
 
           <CampoDescricao
+            key={ocorrencia?.origemId ?? 'novo'}
             valor={descricao}
             onMudar={setDescricao}
             sugestoes={sugestoes}
             onEscolherSugestao={(s) => setDescricao(s)}
+            iniciaTravada={ocorrencia != null && historicoDescricoes.some(
+              (d) => d.trim().toLowerCase() === ocorrencia.descricao.trim().toLowerCase(),
+            )}
             obrigatorio
           />
           <CampoData valor={data} onMudar={setData} />
