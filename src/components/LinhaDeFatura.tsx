@@ -17,9 +17,11 @@ export type FaseFatura = 'futura' | 'aberta' | 'fechada';
 
 type Props = {
   titulo: string;
-  /** Microcópia da tag (ex.: "Cartão · fecha dia 28"). Vocabulário de previsão. */
+  /** Microcópia da legenda (ex.: "fecha dia 28"), abaixo do nome. */
   tagTexto: string;
   tagCor?: TagCor;
+  /** Tema do cartão (§4.9) para a cor da bolinha. */
+  tagTema?: string | null;
   fase: FaseFatura;
   realizado: number;
   /** Teto previsto; null = sem previsão (sem barra, só o realizado acumulado). */
@@ -31,6 +33,7 @@ export function LinhaDeFatura({
   titulo,
   tagTexto,
   tagCor = 'cartao',
+  tagTema,
   fase,
   realizado,
   previsao,
@@ -64,15 +67,27 @@ export function LinhaDeFatura({
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'flex-start',
-            gap: 6,
+            gap: 4,
             flex: '1 1 auto',
             minWidth: 0,
           }}
         >
-          <span className="type-body-strong" style={{ color: 'var(--text-primary)' }}>
-            {titulo}
-          </span>
-          <Tag cor={tagCor}>{tagTexto}</Tag>
+          {/* Nome + bolinha do tema (Tag sem texto), lado a lado. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, maxWidth: '100%', minWidth: 0 }}>
+            <span
+              className="type-body-strong"
+              style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}
+            >
+              {titulo}
+            </span>
+            <Tag cor={tagCor} tema={tagTema} />
+          </div>
+          {/* "fecha dia X" — legenda cinza abaixo do nome. */}
+          {tagTexto && (
+            <span className="type-caption" style={{ color: 'var(--text-muted)' }}>
+              {tagTexto}
+            </span>
+          )}
         </div>
 
         {soRealizado ? (

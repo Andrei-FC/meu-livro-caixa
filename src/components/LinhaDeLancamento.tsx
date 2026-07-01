@@ -4,9 +4,10 @@ import { IconePencil } from '../icons';
 
 /**
  * Linha de lançamento — §5.1, Figma set 2006:64.
- * [ descrição + Tag(conta) ] … [ Valor ] [ editar ]
- * descrição = categoria emergente (§4.6). Editar só no ícone (evita toque
- * acidental, §5.1). Reusa Tag e Valor da biblioteca.
+ * [ descrição · bolinha(tema) ] … [ Valor ] [ editar ]
+ * A bolinha (Tag sem texto) marca a conta/cartão pela cor do tema (§4.9),
+ * ao lado do nome — não mais um pill com o nome repetido embaixo.
+ * descrição = categoria emergente (§4.6). Editar só no ícone (§5.1).
  */
 
 type Props = {
@@ -37,8 +38,7 @@ export function LinhaDeLancamento({ tipo, descricao, valor, conta, parcela, onEd
       <div
         style={{
           display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'flex-start',
+          alignItems: 'center',
           gap: 6,
           flex: '1 1 auto',
           minWidth: 0,
@@ -48,15 +48,15 @@ export function LinhaDeLancamento({ tipo, descricao, valor, conta, parcela, onEd
           className="type-body-strong"
           style={{
             color: 'var(--text-primary)',
-            maxWidth: '100%',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
+            minWidth: 0,
           }}
         >
           {rotulo}
         </span>
-        {conta && <Tag cor={conta.cor ?? 'conta'} tema={conta.tema}>{conta.nome}</Tag>}
+        {conta && <Tag cor={conta.cor ?? 'conta'} tema={conta.tema} />}
       </div>
 
       <Valor tipo={tipo} valor={valor} />

@@ -581,10 +581,9 @@ function Lancamentos(props: {
 
             <div
               style={{
-                borderRadius: 'var(--radius-md)',
+                borderRadius: 'var(--radius-lg)',
                 overflow: 'hidden',
                 background: 'var(--bg-surface)',
-                border: '1px solid var(--border-default)',
                 display: 'flex',
                 flexDirection: 'column',
               }}
@@ -604,7 +603,8 @@ function Lancamentos(props: {
                   <LinhaDeFatura
                     key={`fat-${it.k.id}-${i}`}
                     titulo={it.k.nome}
-                    tagTexto={contaPorId.get(it.k.conta_id)?.nome ?? 'Cartão'}
+                    tagTexto={`fecha dia ${it.k.dia_fechamento}`}
+                    tagTema={contaPorId.get(it.k.conta_id)?.tema}
                     fase={fase(it.k)}
                     realizado={realizadoPorCartao.get(it.k.id) ?? 0}
                     previsao={it.k.previsao_mensal}
