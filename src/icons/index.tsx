@@ -8,8 +8,9 @@
  * (text/muted na linha, theme/text no card, text/on-accent no FAB).
  */
 
-// Logos de banco/bandeira (família separada, biblioteca fixa §4.9).
+// Logos de banco e bandeira (famílias separadas, bibliotecas fixas §4.9).
 export * from './bancos';
+export * from './bandeiras';
 
 type IconeProps = {
   /** Lado do quadrado em px. Default = tamanho nativo do ícone no Figma. */
@@ -177,6 +178,14 @@ export function IconeLogout({ tamanho = 22 }: IconeProps) {
   return (
     <svg width={tamanho} height={tamanho} viewBox="0 0 22 22" fill="none" aria-hidden>
       <path fillRule="evenodd" clipRule="evenodd" d="M3.29999 3.2998C3.9075 3.2998 4.39999 3.79229 4.39999 4.3998L4.39999 17.5998C4.39999 18.2073 3.9075 18.6998 3.29999 18.6998C2.69247 18.6998 2.19999 18.2073 2.19999 17.5998L2.19999 4.3998C2.19999 3.79229 2.69247 3.2998 3.29999 3.2998ZM11.7778 6.92199C12.2074 7.35156 12.2074 8.04804 11.7778 8.47762L10.3556 9.8998L18.7 9.8998C19.3075 9.8998 19.8 10.3923 19.8 10.9998C19.8 11.6073 19.3075 12.0998 18.7 12.0998L10.3556 12.0998L11.7778 13.522C12.2074 13.9516 12.2074 14.648 11.7778 15.0776C11.3482 15.5072 10.6517 15.5072 10.2222 15.0776L6.92217 11.7776C6.71588 11.5713 6.59999 11.2915 6.59999 10.9998C6.59999 10.7081 6.71588 10.4283 6.92217 10.222L10.2222 6.92199C10.6517 6.49241 11.3482 6.49241 11.7778 6.92199Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function IconeBan({ tamanho = 20 }: IconeProps) {
+  return (
+    <svg width={tamanho} height={tamanho} viewBox="0 0 20 20" fill="none" aria-hidden>
+      <path fillRule="evenodd" clipRule="evenodd" d="M18 10C18 14.4183 14.4183 18 10 18C5.58172 18 2 14.4183 2 10C2 5.58172 5.58172 2 10 2C14.4183 2 18 5.58172 18 10ZM13.4766 14.8907C12.4958 15.5892 11.2959 16 10 16C6.68629 16 4 13.3137 4 10C4 8.70414 4.41081 7.50423 5.1093 6.52339L13.4766 14.8907ZM14.8908 13.4765L6.52354 5.1092C7.50434 4.41077 8.7042 4 10 4C13.3137 4 16 6.68629 16 10C16 11.2958 15.5892 12.4957 14.8908 13.4765Z" fill="currentColor" />
     </svg>
   );
 }

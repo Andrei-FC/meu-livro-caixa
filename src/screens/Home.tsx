@@ -26,6 +26,10 @@ import {
   LancarSheet,
   EditarSheet,
 } from '../components';
+import { GerenciarContas } from './GerenciarContas';
+import { GerenciarCartoes } from './GerenciarCartoes';
+import { CriarEditarConta } from './CriarEditarConta';
+import { CriarEditarCartao } from './CriarEditarCartao';
 
 /** Home real (§5.1). Compõe só a biblioteca de componentes.
  *  Estrutura do Figma (2009:11): TopBar (menu + nav de mês) → Card de resumo
@@ -68,6 +72,15 @@ export function Home() {
   const [sheetAberto, setSheetAberto] = useState(false);
   const [menuAberto, setMenuAberto] = useState(false);
   const [emEdicao, setEmEdicao] = useState<OcorrenciaLancamento | null>(null);
+
+  // Roteamento por estado para as PÁGINAS PRÓPRIAS (§5.8) — telas cheias fora
+  // das abas da Home (gerenciar/criar/editar conta e cartão). null = Home.
+  type Pagina =
+    | { tela: 'gerenciar-contas' }
+    | { tela: 'gerenciar-cartoes' }
+    | { tela: 'conta'; conta: Conta | null }
+    | { tela: 'cartao'; cartao: Cartao | null };
+  const [pagina, setPagina] = useState<Pagina | null>(null);
 
   const carregar = useCallback(() => {
     setErro(null);
@@ -172,7 +185,50 @@ export function Home() {
       await supabase.auth.signOut();
       return;
     }
-    // TODO: rotear cofre/contas/cartões/categorias/configurações (§5.8)
+    if (destino === 'contas') { setPagina({ tela: 'gerenciar-contas' }); return; }
+    if (destino === 'cartoes') { setPagina({ tela: 'gerenciar-cartoes' }); return; }
+    // TODO: rotear cofre/categorias/configurações (§5.8)
+  }
+
+  // Renderiza as páginas próprias por cima da Home (§5.8). Recarrega os dados ao
+  // salvar; o "voltar" das telas de criar/editar leva à lista correspondente.
+  if (pagina?.tela === 'gerenciar-contas') {
+    return (
+      <GerenciarContas
+        contas={contas}
+        onVoltar={() => setPagina(null)}
+        onCriar={() => setPagina({ tela: 'conta', conta: null })}
+        onEditar={(c) => setPagina({ tela: 'conta', conta: c })}
+      />
+    );
+  }
+  if (pagina?.tela === 'gerenciar-cartoes') {
+    return (
+      <GerenciarCartoes
+        cartoes={cartoes}
+        onVoltar={() => setPagina(null)}
+        onCriar={() => setPagina({ tela: 'cartao', cartao: null })}
+        onEditar={(k) => setPagina({ tela: 'cartao', cartao: k })}
+      />
+    );
+  }
+  if (pagina?.tela === 'conta') {
+    return (
+      <CriarEditarConta
+        conta={pagina.conta}
+        onVoltar={() => setPagina({ tela: 'gerenciar-contas' })}
+        onSalvou={() => { carregar(); }}
+      />
+    );
+  }
+  if (pagina?.tela === 'cartao') {
+    return (
+      <CriarEditarCartao
+        cartao={pagina.cartao}
+        onVoltar={() => setPagina({ tela: 'gerenciar-cartoes' })}
+        onSalvou={() => { carregar(); }}
+      />
+    );
   }
 
   return (
@@ -231,7 +287,7 @@ export function Home() {
                   c.tipo === 'poupanca' ? (
                     <CardDeEntidade key={c.id} tipo="poupanca" nome={c.nome} valor={0 /* TODO §4.7 */} tema={c.tema ?? undefined} />
                   ) : (
-                    <CardDeEntidade key={c.id} tipo="conta" nome={c.nome} valor={0 /* TODO §4.7 */} tema={c.tema ?? undefined} entradas={0} saidas={0} />
+                    <CardDeEntidade key={c.id} tipo="conta" nome={c.nome} valor={0 /* TODO §4.7 */} tema={c.tema ?? undefined} banco={c.icone} entradas={0} saidas={0} />
                   ),
                 )}
               </Entidades>
@@ -249,6 +305,8 @@ export function Home() {
                       nome={k.nome}
                       valor={realizado}
                       tema={k.tema ?? undefined}
+                      banco={k.banco}
+                      bandeira={k.bandeira}
                       realizado={realizado}
                       previsao={k.previsao_mensal}
                       legenda={`${pct}% da previsão · fecha dia ${k.dia_fechamento}`}

@@ -1,6 +1,6 @@
 import { BarraDePrevisao } from './BarraDePrevisao';
 import { formatarBR } from '../lib/formato';
-import { IconeImage } from '../icons';
+import { IconeImage, LogoBanco, LogoBandeira } from '../icons';
 
 /**
  * Card de entidade — §5.3, §4.9, Figma set 2018:36.
@@ -13,7 +13,7 @@ import { IconeImage } from '../icons';
  * Home já faz. Cartão pinta tudo; Conta/Poupança pintam só a testeira (§4.9).
  */
 
-type Base = { nome: string; valor: number; tema?: string };
+type Base = { nome: string; valor: number; tema?: string; banco?: string | null };
 
 type ContaProps = Base & {
   tipo: 'conta';
@@ -26,6 +26,8 @@ type CartaoProps = Base & {
   tipo: 'cartao';
   realizado: number;
   previsao: number;
+  /** Chave da bandeira (§4.9), opcional. */
+  bandeira?: string | null;
   /** Legenda já montada (ex.: "29% da previsão · fecha 30 jun"). */
   legenda: string;
 };
@@ -69,7 +71,7 @@ function ComTesteira(props: ContaProps | PoupancaProps | CofreProps) {
           color: testeiraFg,
         }}
       >
-        <SlotLogo />
+        <SlotLogo banco={props.tipo === 'cofre' ? null : props.banco} />
         <span className="type-numeric">{nome}</span>
       </div>
 
@@ -89,7 +91,7 @@ function ComTesteira(props: ContaProps | PoupancaProps | CofreProps) {
   );
 }
 
-function Cartao({ nome, valor, tema, realizado, previsao, legenda }: CartaoProps) {
+function Cartao({ nome, valor, tema, realizado, previsao, legenda, banco, bandeira }: CartaoProps) {
   return (
     <div
       style={{ ...CARD, padding: '18px 20px', gap: 14, background: 'var(--theme-bg)', color: 'var(--theme-text)' }}
@@ -97,10 +99,10 @@ function Cartao({ nome, valor, tema, realizado, previsao, legenda }: CartaoProps
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-          <SlotLogo />
+          <SlotLogo banco={banco} />
           <span className="type-numeric">{nome}</span>
         </span>
-        <SlotBandeira />
+        <SlotBandeira bandeira={bandeira} />
       </div>
 
       <span className="type-display">{formatarBR(valor, { prefixo: true })}</span>
@@ -125,18 +127,20 @@ function Mini({ rotulo, cor, texto }: { rotulo: string; cor: string; texto: stri
   );
 }
 
-/* Slots de logo/bandeira: recebem o IconeImage genérico por ora; quando a
-   biblioteca de logos de banco/bandeira entrar no Figma (§4.9), trocar o
-   conteúdo pelo logo real resolvido por `icone`. O slot em si fica. */
-function SlotLogo() {
+/* Slots de logo/bandeira: renderizam o logo real da biblioteca (§4.9) quando há
+   chave; sem chave, caem no placeholder neutro. O logo herda currentColor, então
+   sobre fundo temático fica com a cor do texto do tema. */
+function SlotLogo({ banco }: { banco?: string | null }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, background: 'rgba(255,255,255,0.18)' }}>
-      <IconeImage tamanho={18} />
+      {banco ? <LogoBanco chave={banco} tamanho={20} /> : <IconeImage tamanho={18} />}
     </span>
   );
 }
-function SlotBandeira() {
+function SlotBandeira({ bandeira }: { bandeira?: string | null }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 24, borderRadius: 4, background: 'rgba(255,255,255,0.18)' }} aria-hidden />
+    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 24, borderRadius: 4, background: 'rgba(255,255,255,0.18)' }} aria-hidden>
+      {bandeira ? <LogoBandeira chave={bandeira} tamanho={20} /> : null}
+    </span>
   );
 }

@@ -22,7 +22,8 @@ export interface Cartao {
   dia_fechamento: number;
   dia_pagamento: number;
   tema: string | null;
-  icone: string | null;
+  banco: string | null; // chave da biblioteca de bancos (§4.9)
+  bandeira: string | null; // chave da biblioteca de bandeiras (§4.9)
   criado_em: string;
 }
 
