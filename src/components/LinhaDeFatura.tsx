@@ -22,7 +22,8 @@ type Props = {
   tagCor?: TagCor;
   fase: FaseFatura;
   realizado: number;
-  previsao: number;
+  /** Teto previsto; null = sem previsão (sem barra, só o realizado acumulado). */
+  previsao: number | null;
   onAbrir: () => void;
 };
 
@@ -35,7 +36,11 @@ export function LinhaDeFatura({
   previsao,
   onAbrir,
 }: Props) {
-  const comBarra = fase !== 'fechada';
+  // Sem previsão não há projeção a mostrar: some a barra e o "/previsto", fica
+  // só o realizado acumulado (mesma leitura de uma fatura fechada) — §4.4.
+  const semPrevisao = previsao == null;
+  const comBarra = fase !== 'fechada' && !semPrevisao;
+  const soRealizado = fase === 'fechada' || semPrevisao;
   const futura = fase === 'futura';
 
   return (
@@ -70,7 +75,7 @@ export function LinhaDeFatura({
           <Tag cor={tagCor}>{tagTexto}</Tag>
         </div>
 
-        {fase === 'fechada' ? (
+        {soRealizado ? (
           <Valor tipo="saida" valor={-Math.abs(realizado)} />
         ) : (
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-xs)', flex: '0 0 auto' }}>
@@ -79,7 +84,7 @@ export function LinhaDeFatura({
             </span>
             <span className="type-body-strong" style={{ color: 'var(--text-muted)' }}>/</span>
             <span className="type-body-small" style={{ color: 'var(--text-secondary)' }}>
-              {formatarBR(previsao)}
+              {formatarBR(previsao ?? 0)}
             </span>
           </div>
         )}

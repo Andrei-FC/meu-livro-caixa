@@ -45,7 +45,11 @@ export function GerenciarCartoes({ cartoes, onVoltar, onCriar, onEditar }: Props
                 bandeira={k.bandeira}
                 realizado={0}
                 previsao={k.previsao_mensal}
-                legenda={`Previsão ${formatarBR(k.previsao_mensal, { prefixo: true })} · fecha dia ${k.dia_fechamento}`}
+                legenda={
+                  k.previsao_mensal != null
+                    ? `Previsão ${formatarBR(k.previsao_mensal, { prefixo: true })} · fecha dia ${k.dia_fechamento}`
+                    : `fecha dia ${k.dia_fechamento}`
+                }
               />
             </button>
           ))

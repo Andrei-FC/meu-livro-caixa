@@ -23,12 +23,16 @@ function resolverFase(razao: number): FaseBarra {
 
 type Props = {
   realizado: number;
-  previsao: number;
+  /** Teto previsto; null/≤0 = sem previsão → a barra não é renderizada. */
+  previsao: number | null;
   rotulo?: string;
 };
 
 export function BarraDePrevisao({ realizado, previsao, rotulo }: Props) {
-  const razao = previsao > 0 ? realizado / previsao : 0;
+  // Sem previsão não há o que preencher: o cartão só acumula o realizado (§4.4).
+  if (previsao == null || previsao <= 0) return null;
+
+  const razao = realizado / previsao;
   const fase = resolverFase(razao);
   const pct = Math.max(0, Math.min(razao, 1)) * 100; // satura em 100%; cor já diz "estourou"
 

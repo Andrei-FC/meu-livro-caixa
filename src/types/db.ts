@@ -18,7 +18,7 @@ export interface Conta {
 export interface Cartao {
   id: string;
   nome: string;
-  previsao_mensal: number; // teto de previsão, não limite do banco (§4.4)
+  previsao_mensal: number | null; // teto de previsão (§4.4); null = sem previsão (só acumula realizado)
   dia_fechamento: number;
   dia_pagamento: number;
   tema: string | null;

@@ -30,7 +30,8 @@ function centavosParaReais(d: string): number {
   return Number(d || '0') / 100;
 }
 /** Reais → string de centavos, para pré-preencher na edição. */
-function reaisParaCentavos(v: number): string {
+function reaisParaCentavos(v: number | null): string {
+  if (v == null) return '';
   return String(Math.round(v * 100));
 }
 /** Garante dia 1–31. */
@@ -53,9 +54,12 @@ export function CriarEditarCartao({ cartao, onVoltar, onSalvou }: Props) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  const previsao = centavosParaReais(digitos);
+  // Previsão é opcional (§4.4): sem valor → null (cartão só acumula o realizado,
+  // sem barra). Só entra no cálculo quando o usuário digita algo.
+  const temPrevisao = digitos !== '';
+  const previsao = temPrevisao ? centavosParaReais(digitos) : null;
   const podeSalvar =
-    nome.trim().length > 0 && previsao > 0 && fechaDia !== '' && venceDia !== '' && !salvando;
+    nome.trim().length > 0 && fechaDia !== '' && venceDia !== '' && !salvando;
 
   async function salvar() {
     setErro(null);
@@ -112,12 +116,13 @@ export function CriarEditarCartao({ cartao, onVoltar, onSalvou }: Props) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span className="type-label" style={{ color: 'var(--text-secondary)' }}>Previsão mensal de gasto</span>
           <span className="type-caption" style={{ color: 'var(--text-muted)' }}>
-            Quanto você planeja gastar — não é o limite do banco
+            Opcional. Sem previsão, o cartão só acumula o que você lançar — não é o limite do banco
           </span>
           <input
-            value={`R$ ${formatarBR(previsao)}`}
+            value={temPrevisao ? `R$ ${formatarBR(previsao ?? 0)}` : ''}
             onChange={(e) => setDigitos(e.target.value.replace(/\D/g, '').slice(0, 12))}
             inputMode="numeric"
+            placeholder="Sem previsão"
             aria-label="Previsão mensal em reais"
             className="type-body"
             style={{

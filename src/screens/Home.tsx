@@ -155,6 +155,33 @@ export function Home() {
     }
     return { entradas: e, saidas: s };
   }, [ocorrenciasLista]);
+
+  // Entradas/saídas por conta no MÊS EXIBIDO — cards da aba Contas da Home
+  // (acompanha a navegação de mês). Débito puro já vem filtrado (§4.8).
+  const porConta = useMemo(() => {
+    const m = new Map<string, { entradas: number; saidas: number }>();
+    for (const o of ocorrenciasLista) {
+      const acc = m.get(o.conta_id) ?? { entradas: 0, saidas: 0 };
+      if (o.tipo === 'entrada') acc.entradas += o.valor; else acc.saidas += o.valor;
+      m.set(o.conta_id, acc);
+    }
+    return m;
+  }, [ocorrenciasLista]);
+
+  // Entradas/saídas por conta no MÊS ATUAL real (não o exibido) — tela de
+  // Gerenciar Contas, que não tem seletor de mês: mostra sempre o corrente.
+  const porContaMesAtual = useMemo(() => {
+    const ocs = lancamentosNoMes(
+      lancamentos, hoje.getFullYear(), hoje.getMonth(), hoje, indiceExcecoes,
+    ).filter((o) => o.cartao_id == null);
+    const m = new Map<string, { entradas: number; saidas: number }>();
+    for (const o of ocs) {
+      const acc = m.get(o.conta_id) ?? { entradas: 0, saidas: 0 };
+      if (o.tipo === 'entrada') acc.entradas += o.valor; else acc.saidas += o.valor;
+      m.set(o.conta_id, acc);
+    }
+    return m;
+  }, [lancamentos, hoje, indiceExcecoes]);
   // Saldo herdado: acumulado desde a âncora (1º registro) até o mês anterior
   // (§4.7). Calculado na leitura e memoizado — barato porque expande regras,
   // não linhas. Projeção futura limitada ao horizonte do motor.
@@ -196,6 +223,7 @@ export function Home() {
     return (
       <GerenciarContas
         contas={contas}
+        entradasSaidas={porContaMesAtual}
         onVoltar={() => setPagina(null)}
         onCriar={() => setPagina({ tela: 'conta', conta: null })}
         onEditar={(c) => setPagina({ tela: 'conta', conta: c })}
@@ -287,7 +315,7 @@ export function Home() {
                   c.tipo === 'poupanca' ? (
                     <CardDeEntidade key={c.id} tipo="poupanca" nome={c.nome} valor={0 /* TODO §4.7 */} tema={c.tema ?? undefined} />
                   ) : (
-                    <CardDeEntidade key={c.id} tipo="conta" nome={c.nome} valor={0 /* TODO §4.7 */} tema={c.tema ?? undefined} banco={c.icone} entradas={0} saidas={0} />
+                    <CardDeEntidade key={c.id} tipo="conta" nome={c.nome} valor={0 /* TODO §4.7 */} tema={c.tema ?? undefined} banco={c.icone} entradas={porConta.get(c.id)?.entradas ?? 0} saidas={porConta.get(c.id)?.saidas ?? 0} />
                   ),
                 )}
               </Entidades>
@@ -297,7 +325,11 @@ export function Home() {
               <Entidades vazio="Nenhum cartão cadastrado.">
                 {cartoes.map((k) => {
                   const realizado = realizadoPorCartao.get(k.id) ?? 0;
-                  const pct = k.previsao_mensal > 0 ? Math.round((realizado / k.previsao_mensal) * 100) : 0;
+                  const temPrev = k.previsao_mensal != null && k.previsao_mensal > 0;
+                  const pct = temPrev ? Math.round((realizado / k.previsao_mensal!) * 100) : 0;
+                  const legenda = temPrev
+                    ? `${pct}% da previsão · fecha dia ${k.dia_fechamento}`
+                    : `fecha dia ${k.dia_fechamento}`;
                   return (
                     <CardDeEntidade
                       key={k.id}
@@ -309,7 +341,7 @@ export function Home() {
                       bandeira={k.bandeira}
                       realizado={realizado}
                       previsao={k.previsao_mensal}
-                      legenda={`${pct}% da previsão · fecha dia ${k.dia_fechamento}`}
+                      legenda={legenda}
                     />
                   );
                 })}

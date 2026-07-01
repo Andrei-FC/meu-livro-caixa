@@ -25,7 +25,8 @@ type CofreProps = Base & { tipo: 'cofre' };
 type CartaoProps = Base & {
   tipo: 'cartao';
   realizado: number;
-  previsao: number;
+  /** Teto previsto; null = sem previsão (sem barra, só acumula — §4.4). */
+  previsao: number | null;
   /** Chave da bandeira (§4.9), opcional. */
   bandeira?: string | null;
   /** Legenda já montada (ex.: "29% da previsão · fecha 30 jun"). */
@@ -110,7 +111,7 @@ function Cartao({ nome, valor, tema, realizado, previsao, legenda, banco, bandei
       <BarraDePrevisao
         realizado={realizado}
         previsao={previsao}
-        rotulo={`${formatarBR(realizado)} de ${formatarBR(previsao)} previstos`}
+        rotulo={previsao != null ? `${formatarBR(realizado)} de ${formatarBR(previsao)} previstos` : undefined}
       />
 
       <span className="type-label">{legenda}</span>
