@@ -16,7 +16,7 @@ import {
 } from './_camposLancamento';
 import { IconeClose } from '../icons';
 import { formatarBR } from '../lib/formato';
-import { supabase } from '../lib/supabase';
+import { supabase, comTimeout } from '../lib/supabase';
 import type { Conta, Cartao, Lancamento } from '../types/db';
 import type { OcorrenciaLancamento } from '../lib/recorrencia';
 import { planejarDivisao, suportaFuturas } from '../lib/recorrencia';
@@ -79,6 +79,11 @@ export function EditarSheet({
   const [seletor, setSeletor] = useState<ContextoSeletor | null>(null);
   const [escopoPara, setEscopoPara] = useState<'salvar' | 'excluir' | null>(null);
   const [confirmarExcluirTodas, setConfirmarExcluirTodas] = useState(false);
+  // Bloqueio (§4.3/P0.2): trocar a conta/cartão de UMA ocorrência de série não é
+  // modelável — `excecoes_serie` não guarda conta/cartão, e mudar no meio da
+  // série violaria o passado. Em vez de lógica de exceção frágil, bloqueamos com
+  // aviso (decisão travada).
+  const [bloqueioConta, setBloqueioConta] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -110,6 +115,7 @@ export function EditarSheet({
   function fechar() {
     setEscopoPara(null);
     setConfirmarExcluirTodas(false);
+    setBloqueioConta(false);
     onFechar();
   }
 
@@ -123,7 +129,7 @@ export function EditarSheet({
     try {
       if (!ehSerie || escopo === null) {
         // À vista: edição direta da própria linha.
-        const { error } = await supabase
+        const { error } = await comTimeout(supabase
           .from('lancamentos')
           .update({
             valor,
@@ -133,11 +139,11 @@ export function EditarSheet({
             conta_id: cartaoSel ? regra.conta_id : contaSel?.id ?? regra.conta_id,
             cartao_id: cartaoSel?.id ?? null,
           })
-          .eq('id', regra.id);
+          .eq('id', regra.id));
         if (error) throw error;
       } else if (escopo === 'so_esta') {
         // Override desta ocorrência (a regra continua intacta).
-        const { error } = await supabase
+        const { error } = await comTimeout(supabase
           .from('excecoes_serie')
           .upsert(
             {
@@ -149,20 +155,20 @@ export function EditarSheet({
               nota: nota.trim() || null,
             },
             { onConflict: 'serie_id,data_alvo' },
-          );
+          ));
         if (error) throw error;
       } else if (escopo === 'esta_e_futuras') {
         await executarDivisao('salvar');
       } else if (escopo === 'todas') {
         // Edita a regra inteira; exceções já gravadas permanecem (§4.3).
-        const { error } = await supabase
+        const { error } = await comTimeout(supabase
           .from('lancamentos')
           .update({
             valor,
             descricao: descricao.trim(),
             nota: nota.trim() || null,
           })
-          .eq('id', regra.id);
+          .eq('id', regra.id));
         if (error) throw error;
       }
       finalizar();
@@ -178,23 +184,23 @@ export function EditarSheet({
     setErro(null);
     try {
       if (!ehSerie || escopo === null) {
-        const { error } = await supabase.from('lancamentos').delete().eq('id', regra.id);
+        const { error } = await comTimeout(supabase.from('lancamentos').delete().eq('id', regra.id));
         if (error) throw error;
       } else if (escopo === 'so_esta') {
-        const { error } = await supabase
+        const { error } = await comTimeout(supabase
           .from('excecoes_serie')
           .upsert(
             { serie_id: ocorrencia.serieId, data_alvo: ocorrencia.data, excluida: true },
             { onConflict: 'serie_id,data_alvo' },
-          );
+          ));
         if (error) throw error;
       } else if (escopo === 'esta_e_futuras') {
         await executarDivisao('excluir');
       } else if (escopo === 'todas') {
         // Apaga a regra e suas exceções (após a confirmação de bloqueio).
-        const e1 = await supabase.from('excecoes_serie').delete().eq('serie_id', ocorrencia.serieId);
+        const e1 = await comTimeout(supabase.from('excecoes_serie').delete().eq('serie_id', ocorrencia.serieId));
         if (e1.error) throw e1.error;
-        const e2 = await supabase.from('lancamentos').delete().eq('id', regra.id);
+        const e2 = await comTimeout(supabase.from('lancamentos').delete().eq('id', regra.id));
         if (e2.error) throw e2.error;
       }
       finalizar();
@@ -222,20 +228,20 @@ export function EditarSheet({
       plano.encerrar.campo === 'parcelas'
         ? { parcelas: plano.encerrar.manter }
         : { recorrencia_fim: plano.encerrar.manter };
-    const e1 = await supabase.from('lancamentos').update(upd).eq('id', regra.id);
+    const e1 = await comTimeout(supabase.from('lancamentos').update(upd).eq('id', regra.id));
     if (e1.error) throw e1.error;
 
     // 2. limpa exceções que agora pertenceriam à nova fase (data_alvo >= corte)
-    const e2 = await supabase
+    const e2 = await comTimeout(supabase
       .from('excecoes_serie')
       .delete()
       .eq('serie_id', ocorrencia.serieId)
-      .gte('data_alvo', plano.removerExcecoesAPartirDe);
+      .gte('data_alvo', plano.removerExcecoesAPartirDe));
     if (e2.error) throw e2.error;
 
     // 3. cria a nova regra (só no salvar), mesmo serie_id (mesma etiqueta)
     if (plano.novaRegra) {
-      const e3 = await supabase.from('lancamentos').insert({
+      const e3 = await comTimeout(supabase.from('lancamentos').insert({
         tipo: regra.tipo,
         valor: plano.novaRegra.valor,
         descricao: plano.novaRegra.descricao,
@@ -248,7 +254,7 @@ export function EditarSheet({
         recorrencia_fim: plano.novaRegra.recorrencia_fim,
         assinatura: regra.assinatura,
         serie_id: ocorrencia.serieId,
-      });
+      }));
       if (e3.error) throw e3.error;
     }
   }
@@ -263,7 +269,18 @@ export function EditarSheet({
 
   // ── Disparos (escopo só para série) ──
 
+  /** Conta/cartão original da ocorrência (para detectar troca numa série). */
+  const contaOriginal = ocorrencia?.cartao_id ? null : ocorrencia?.conta_id ?? null;
+  const cartaoOriginal = ocorrencia?.cartao_id ?? null;
+  const contaMudou =
+    (contaSel?.id ?? null) !== contaOriginal || (cartaoSel?.id ?? null) !== cartaoOriginal;
+
   function aoSalvar() {
+    // Série + troca de conta/cartão → bloqueia (P0.2). À vista pode trocar livre.
+    if (ehSerie && contaMudou) {
+      setBloqueioConta(true);
+      return;
+    }
     if (ehSerie) setEscopoPara('salvar');
     else aplicarEdicao(null);
   }
@@ -403,6 +420,16 @@ export function EditarSheet({
           primaria={{ rotulo: 'Excluir tudo', onClick: () => aplicarExclusao('todas') }}
           secundaria={{ rotulo: 'Cancelar', onClick: () => setConfirmarExcluirTodas(false) }}
           onScrim={() => setConfirmarExcluirTodas(false)}
+        />
+      )}
+
+      {bloqueioConta && (
+        <ModalDeAlerta
+          tipo="erro"
+          titulo="Não dá para trocar a conta de uma série"
+          corpo="Mudar a conta ou o cartão só de uma ocorrência não é possível. Para mover a série toda, exclua e lance de novo na conta certa."
+          primaria={{ rotulo: 'Entendi', onClick: () => setBloqueioConta(false) }}
+          onScrim={() => setBloqueioConta(false)}
         />
       )}
     </>

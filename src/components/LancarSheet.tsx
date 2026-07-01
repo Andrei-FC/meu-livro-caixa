@@ -19,7 +19,7 @@ import {
 } from './_camposLancamento';
 import { IconeClose } from '../icons';
 import { formatarBR } from '../lib/formato';
-import { supabase } from '../lib/supabase';
+import { supabase, comTimeout } from '../lib/supabase';
 import type { Conta, Cartao, LancamentoTipo } from '../types/db';
 
 /**
@@ -148,7 +148,7 @@ export function LancarSheet({
           recorrencia_fim: repete === 'recorrente' && !recIndefinida ? recVezes : null,
           serie_id: repete === 'recorrente' ? crypto.randomUUID() : null,
         };
-        const { error } = await supabase.from('transferencias').insert(payload);
+        const { error } = await comTimeout(supabase.from('transferencias').insert(payload));
         if (error) throw error;
       } else {
         const payload = {
@@ -167,7 +167,7 @@ export function LancarSheet({
           // e ancorar exceções (§4.1, §4.3); à vista não é série.
           serie_id: repete === 'avista' ? null : crypto.randomUUID(),
         };
-        const { error } = await supabase.from('lancamentos').insert(payload);
+        const { error } = await comTimeout(supabase.from('lancamentos').insert(payload));
         if (error) throw error;
       }
       resetar();
