@@ -182,8 +182,11 @@ export function CampoDescricao({
                 <button
                   key={s}
                   type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => escolher(s)}
+                  // Safari (iOS/touch) não suprime o blur com onMouseDown+preventDefault:
+                  // o input perde foco, o setTimeout do onBlur desmonta o dropdown ANTES
+                  // do onClick, e a sugestão nunca vira pill. onPointerDown dispara antes
+                  // do blur em mouse E touch, então commitamos a escolha aqui.
+                  onPointerDown={(e) => { e.preventDefault(); escolher(s); }}
                   className="type-body"
                   style={{
                     display: 'block', width: '100%', textAlign: 'left',
