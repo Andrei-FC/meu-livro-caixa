@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { IconeChevronRight, IconeMinus, IconePlus, IconeCalendar } from '../icons';
+import { IconeChevronRight, IconeMinus, IconePlus, IconeCalendar, IconeImage, LogoBanco } from '../icons';
 import { formatarBR } from '../lib/formato';
 import type { LancamentoTipo, RepeticaoTipo } from '../types/db';
 
@@ -232,8 +232,9 @@ export function CampoData({ valor, onMudar }: { valor: string; onMudar: (s: stri
 }
 
 export function CampoSeletor({
-  label, valor, ehCartao, onAbrir,
-}: { label: string; valor: string; ehCartao?: boolean; onAbrir: () => void }) {
+  label, valor, ehCartao, banco, tema, onAbrir,
+}: { label: string; valor: string; ehCartao?: boolean; banco?: string | null; tema?: string | null; onAbrir: () => void }) {
+  const temLogo = banco != null || tema != null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <span className="type-label" style={{ color: 'var(--text-secondary)' }}>{label}</span>
@@ -250,6 +251,27 @@ export function CampoSeletor({
           width: '100%', textAlign: 'left', cursor: 'pointer',
         }}
       >
+        {/* Lead icon: swatch temático com o logo do banco (Figma "Show lead
+            Icon"/§4.9). Só quando há entidade selecionada (banco ou tema). */}
+        {temLogo && (
+          <span
+            aria-hidden
+            data-card-theme={tema ?? undefined}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 'var(--radius-sm)',
+              background: tema ? 'var(--theme-bg)' : 'var(--p-slate-400)',
+              color: tema ? 'var(--theme-text)' : 'var(--p-white)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flex: '0 0 auto',
+            }}
+          >
+            {banco ? <LogoBanco chave={banco} tamanho={16} /> : <IconeImage tamanho={14} />}
+          </span>
+        )}
         {ehCartao && (
           <span className="type-label" style={{ padding: '2px 8px', borderRadius: 'var(--radius-sm)', background: 'var(--accent-subtle)', color: 'var(--accent-default)' }}>
             Cartão

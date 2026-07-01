@@ -583,7 +583,7 @@ function Lancamentos(props: {
                     tipo={it.o.tipo}
                     descricao={it.o.descricao}
                     valor={it.o.tipo === 'saida' ? -it.o.valor : it.o.valor}
-                    conta={(() => { const c = contaPorId.get(it.o.conta_id); return c ? { nome: c.nome } : undefined; })()}
+                    conta={(() => { const c = contaPorId.get(it.o.conta_id); return c ? { nome: c.nome, tema: c.tema } : undefined; })()}
                     parcela={it.o.total != null ? { indice: it.o.indice, total: it.o.total } : undefined}
                     onEditar={() => onEditar(it.o)}
                   />

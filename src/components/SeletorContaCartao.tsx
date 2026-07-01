@@ -1,5 +1,5 @@
 import { BottomSheet } from './BottomSheet';
-import { IconeImage } from '../icons';
+import { IconeImage, LogoBanco } from '../icons';
 import type { Conta, Cartao } from '../types/db';
 
 /**
@@ -78,6 +78,7 @@ export function SeletorContaCartao({
             key={c.id}
             nome={c.nome}
             tema={c.tema}
+            banco={c.icone}
             onClick={() => onSelecionar({ kind: 'conta', conta: c })}
           />
         ))}
@@ -90,6 +91,7 @@ export function SeletorContaCartao({
                 key={k.id}
                 nome={k.nome}
                 tema={k.tema}
+                banco={k.banco}
                 onClick={() => onSelecionar({ kind: 'cartao', cartao: k })}
               />
             ))}
@@ -113,7 +115,7 @@ function Secao({ titulo }: { titulo: string }) {
   );
 }
 
-function Linha({ nome, tema, onClick }: { nome: string; tema: string | null; onClick: () => void }) {
+function Linha({ nome, tema, banco, onClick }: { nome: string; tema: string | null; banco?: string | null; onClick: () => void }) {
   // Swatch temático: data-card-theme resolve --theme-bg/--theme-text (§4.9);
   // sem tema, cai no slate neutro. Mesmo contrato visual do CardDeEntidade.
   const semTema = !tema;
@@ -148,7 +150,7 @@ function Linha({ nome, tema, onClick }: { nome: string; tema: string | null; onC
           flex: '0 0 auto',
         }}
       >
-        <IconeImage tamanho={20} />
+        {banco ? <LogoBanco chave={banco} tamanho={20} /> : <IconeImage tamanho={20} />}
       </span>
       <span className="type-body" style={{ color: 'var(--text-primary)' }}>
         {nome}

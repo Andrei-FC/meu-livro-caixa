@@ -362,6 +362,8 @@ export function EditarSheet({
             label="Conta"
             valor={cartaoSel ? cartaoSel.nome : contaSel?.nome ?? 'Selecionar'}
             ehCartao={!!cartaoSel}
+            banco={cartaoSel ? cartaoSel.banco : contaSel?.icone}
+            tema={cartaoSel ? cartaoSel.tema : contaSel?.tema}
             onAbrir={() => setSeletor(ocorrencia.tipo === 'entrada' ? 'entrada' : 'saida')}
           />
           <CampoNota valor={nota} onMudar={setNota} />

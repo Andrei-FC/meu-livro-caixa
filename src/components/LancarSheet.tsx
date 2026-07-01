@@ -263,6 +263,8 @@ export function LancarSheet({
                 label="Conta"
                 valor={cartaoSel ? cartaoSel.nome : contaEfetiva?.nome ?? 'Selecionar'}
                 ehCartao={!!cartaoSel}
+                banco={cartaoSel ? cartaoSel.banco : contaEfetiva?.icone}
+                tema={cartaoSel ? cartaoSel.tema : contaEfetiva?.tema}
                 onAbrir={() => setSeletor(modo === 'entrada' ? 'entrada' : 'saida')}
               />
 
@@ -291,11 +293,15 @@ export function LancarSheet({
               <CampoSeletor
                 label="Conta Saída"
                 valor={origemSel?.nome ?? 'Selecionar'}
+                banco={origemSel?.icone}
+                tema={origemSel?.tema}
                 onAbrir={() => setSeletor('transf-saida')}
               />
               <CampoSeletor
                 label="Conta Destino"
                 valor={destinoSel?.nome ?? 'Selecionar'}
+                banco={destinoSel?.icone}
+                tema={destinoSel?.tema}
                 onAbrir={() => setSeletor('transf-destino')}
               />
               {/* Transferência pode ser recorrente, nunca parcelada (§3.4) */}

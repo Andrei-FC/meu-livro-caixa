@@ -14,7 +14,7 @@ type Props = {
   descricao: string;
   /** Número já com sinal pela regra de tipo; Valor formata. */
   valor: number;
-  conta?: { nome: string; cor?: TagCor };
+  conta?: { nome: string; cor?: TagCor; tema?: string | null };
   /** Indicador de parcela (X/N) — só em série finita (parcelamento), §4.2. */
   parcela?: { indice: number; total: number };
   onEditar: () => void;
@@ -31,6 +31,7 @@ export function LinhaDeLancamento({ tipo, descricao, valor, conta, parcela, onEd
         padding: '14px var(--space-lg)',
         width: '100%',
         background: 'var(--bg-surface)',
+        borderBottom: '1px solid var(--divider)',
       }}
     >
       <div
@@ -55,7 +56,7 @@ export function LinhaDeLancamento({ tipo, descricao, valor, conta, parcela, onEd
         >
           {rotulo}
         </span>
-        {conta && <Tag cor={conta.cor ?? 'conta'}>{conta.nome}</Tag>}
+        {conta && <Tag cor={conta.cor ?? 'conta'} tema={conta.tema}>{conta.nome}</Tag>}
       </div>
 
       <Valor tipo={tipo} valor={valor} />
