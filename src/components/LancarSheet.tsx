@@ -65,7 +65,7 @@ export function LancarSheet({
   const [descricao, setDescricao] = useState('');
   const [data, setData] = useState(() => hojeISO());
   const [repete, setRepete] = useState<Repete>('avista');
-  const [parcelas, setParcelas] = useState(12);
+  const [parcelas, setParcelas] = useState(2);
   const [recIndefinida, setRecIndefinida] = useState(true);
   const [recVezes, setRecVezes] = useState(12);
   const [assinatura, setAssinatura] = useState(false);
@@ -106,7 +106,7 @@ export function LancarSheet({
     setDescricao('');
     setData(hojeISO());
     setRepete('avista');
-    setParcelas(12);
+    setParcelas(2);
     setRecIndefinida(true);
     setRecVezes(12);
     setAssinatura(false);

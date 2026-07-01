@@ -17,7 +17,7 @@
  * Só visual + callbacks; não conhece estado (vem por props).
  */
 
-import { IconeMenu, IconeChevronLeft, IconeChevronRight, IconeAdd } from '../icons';
+import { IconeMenu, IconeChevronLeft, IconeChevronRight, IconeAdd, IconeClose } from '../icons';
 
 const botaoPill: React.CSSProperties = {
   display: 'inline-flex',
@@ -58,8 +58,11 @@ type ChuldProps = {
   variante: 'chuld';
   /** Título da página, ex.: "Contas", "Novo Cartão", nome do cartão. */
   titulo: string;
-  /** Seta de voltar. */
+  /** Seta de voltar (ou fechar, ver `fechar`). */
   onVoltar?: () => void;
+  /** Botão esquerdo vira X (fechar) e o título é omitido — drill-down do cartão
+   *  (§5.3, design atualizado no Figma). Default false (seta + título). */
+  fechar?: boolean;
   /** Mostra o FAB `+` à direita (gerenciar: criar nova entidade). Default false. */
   fab?: boolean;
   /** Toca no FAB. */
@@ -111,21 +114,28 @@ function HeaderDefault({ mesAno, onMenu, onAnterior, onProximo }: DefaultProps) 
   );
 }
 
-function HeaderChuld({ titulo, onVoltar, fab = false, onFab, mostrarData = false, mesAno, onAnterior, onProximo }: ChuldProps) {
+function HeaderChuld({ titulo, onVoltar, fechar = false, fab = false, onFab, mostrarData = false, mesAno, onAnterior, onProximo }: ChuldProps) {
   return (
     <header style={{ paddingTop: 'var(--space-md)' }}>
       <div style={topBar}>
-        {/* Voltar + título */}
+        {/* Voltar (ou fechar) + título */}
         <div style={{ display: 'flex', flex: '1 0 0', alignItems: 'center', gap: 'var(--space-sm)', minWidth: 0 }}>
-          <button type="button" aria-label="Voltar" onClick={onVoltar} style={{ ...botaoPill, width: 40, height: 40 }}>
-            <IconeChevronLeft tamanho={20} />
-          </button>
-          <span
-            className="type-title"
-            style={{ color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+          <button
+            type="button"
+            aria-label={fechar ? 'Fechar' : 'Voltar'}
+            onClick={onVoltar}
+            style={{ ...botaoPill, width: 40, height: 40 }}
           >
-            {titulo}
-          </span>
+            {fechar ? <IconeClose tamanho={20} /> : <IconeChevronLeft tamanho={20} />}
+          </button>
+          {!fechar && (
+            <span
+              className="type-title"
+              style={{ color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
+              {titulo}
+            </span>
+          )}
         </div>
 
         {/* Seletor de mês opcional (drill-down do cartão, §5.3) */}

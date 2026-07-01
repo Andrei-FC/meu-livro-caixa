@@ -421,6 +421,7 @@ export function Home() {
                       realizado={realizado}
                       previsao={k.previsao_mensal}
                       legenda={legenda}
+                      onAbrir={() => setPagina({ tela: 'drill-cartao', cartao: k })}
                     />
                   );
                 })}
@@ -547,6 +548,7 @@ function Lancamentos(props: {
                     descricao={it.o.descricao}
                     valor={it.o.tipo === 'saida' ? -it.o.valor : it.o.valor}
                     conta={(() => { const c = contaPorId.get(it.o.conta_id); return c ? { nome: c.nome } : undefined; })()}
+                    parcela={it.o.total != null ? { indice: it.o.indice, total: it.o.total } : undefined}
                     onEditar={() => onEditar(it.o)}
                   />
                 ) : (

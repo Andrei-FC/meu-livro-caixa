@@ -31,6 +31,8 @@ type CartaoProps = Base & {
   bandeira?: string | null;
   /** Legenda já montada (ex.: "29% da previsão · fecha 30 jun"). */
   legenda: string;
+  /** Se presente, o card inteiro abre o drill-down ao tocar (§5.3). */
+  onAbrir?: () => void;
 };
 
 type Props = ContaProps | PoupancaProps | CofreProps | CartaoProps;
@@ -92,11 +94,22 @@ function ComTesteira(props: ContaProps | PoupancaProps | CofreProps) {
   );
 }
 
-function Cartao({ nome, valor, tema, realizado, previsao, legenda, banco, bandeira }: CartaoProps) {
+function Cartao({ nome, valor, tema, realizado, previsao, legenda, banco, bandeira, onAbrir }: CartaoProps) {
   return (
     <div
-      style={{ ...CARD, padding: '18px 20px', gap: 14, background: 'var(--theme-bg)', color: 'var(--theme-text)' }}
+      style={{
+        ...CARD,
+        padding: '18px 20px',
+        gap: 14,
+        background: 'var(--theme-bg)',
+        color: 'var(--theme-text)',
+        cursor: onAbrir ? 'pointer' : undefined,
+      }}
       data-card-theme={tema}
+      onClick={onAbrir}
+      role={onAbrir ? 'button' : undefined}
+      tabIndex={onAbrir ? 0 : undefined}
+      onKeyDown={onAbrir ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAbrir(); } } : undefined}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
