@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { usePresenca, EASE_OVERLAY } from '../lib/usePresenca';
 
 /**
  * BottomSheet — primitivo de container (§5.2, §5.7).
@@ -30,9 +31,11 @@ export function BottomSheet({
   'aria-label': ariaLabel,
   zIndex = 100,
 }: Props) {
-  // Esc fecha; trava o scroll do fundo enquanto aberto.
+  const { montado, visivel, duracao } = usePresenca(aberto);
+
+  // Esc fecha; trava o scroll do fundo enquanto montado.
   useEffect(() => {
-    if (!aberto) return;
+    if (!montado) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onFechar(); };
     document.addEventListener('keydown', onKey);
     const overflowAnterior = document.body.style.overflow;
@@ -41,9 +44,9 @@ export function BottomSheet({
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = overflowAnterior;
     };
-  }, [aberto, onFechar]);
+  }, [montado, onFechar]);
 
-  if (!aberto) return null;
+  if (!montado) return null;
 
   return (
     <div
@@ -59,6 +62,9 @@ export function BottomSheet({
         justifyContent: 'flex-end',
         background: 'var(--overlay-scrim)',
         zIndex,
+        // Scrim em fade.
+        opacity: visivel ? 1 : 0,
+        transition: `opacity ${duracao}ms ${EASE_OVERLAY}`,
       }}
     >
       <div
@@ -74,6 +80,10 @@ export function BottomSheet({
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
+          // Sobe de baixo.
+          transform: visivel ? 'translateY(0)' : 'translateY(100%)',
+          transition: `transform ${duracao}ms ${EASE_OVERLAY}`,
+          willChange: 'transform',
         }}
       >
         {/* grabber (Figma: barrinha 36×4, slate, raio full) */}

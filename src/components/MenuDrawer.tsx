@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { usePresenca, EASE_OVERLAY } from '../lib/usePresenca';
 import {
   IconeHome,
   IconeWallet,
@@ -55,9 +56,11 @@ export function MenuDrawer({
   onNavegar,
   zIndex = 100,
 }: Props) {
-  // Esc fecha; trava o scroll do fundo enquanto aberto.
+  const { montado, visivel, duracao } = usePresenca(aberto);
+
+  // Esc fecha; trava o scroll do fundo enquanto montado.
   useEffect(() => {
-    if (!aberto) return;
+    if (!montado) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onFechar(); };
     document.addEventListener('keydown', onKey);
     const overflowAnterior = document.body.style.overflow;
@@ -66,9 +69,9 @@ export function MenuDrawer({
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = overflowAnterior;
     };
-  }, [aberto, onFechar]);
+  }, [montado, onFechar]);
 
-  if (!aberto) return null;
+  if (!montado) return null;
 
   const navegar = (destino: DestinoMenu) => {
     onNavegar?.(destino);
@@ -87,6 +90,9 @@ export function MenuDrawer({
         justifyContent: 'flex-start',
         background: 'var(--overlay-scrim)',
         zIndex,
+        // Scrim em fade.
+        opacity: visivel ? 1 : 0,
+        transition: `opacity ${duracao}ms ${EASE_OVERLAY}`,
       }}
     >
       <nav
@@ -99,6 +105,10 @@ export function MenuDrawer({
           display: 'flex',
           flexDirection: 'column',
           overflowY: 'auto',
+          // Entra da esquerda.
+          transform: visivel ? 'translateX(0)' : 'translateX(-100%)',
+          transition: `transform ${duracao}ms ${EASE_OVERLAY}`,
+          willChange: 'transform',
         }}
       >
         {/* ── Cabeçalho ── */}
