@@ -86,8 +86,9 @@ export function EditarSheet({
   const [bloqueioConta, setBloqueioConta] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const valorInputRef = useRef<HTMLInputElement>(null);
 
-  // Sincroniza os campos quando abre numa nova ocorrência.
+  // Sincroniza os campos quando abre numa nova ocorrência + foca o valor.
   useEffect(() => {
     if (!aberto || !ocorrencia || !regra) return;
     setDigitos(reaisParaCentavos(ocorrencia.valor));
@@ -97,10 +98,13 @@ export function EditarSheet({
     setContaSel(ocorrencia.cartao_id ? null : contas.find((c) => c.id === ocorrencia.conta_id) ?? null);
     setCartaoSel(ocorrencia.cartao_id ? cartoes.find((k) => k.id === ocorrencia.cartao_id) ?? null : null);
     setErro(null);
+    // Foco no valor após a animação de abertura do sheet. autoFocus não serve
+    // aqui: o input não remonta a cada abertura (só muda `ocorrencia`), e focar
+    // durante o slide-in é ignorado no iOS. O timeout deixa a folha assentar.
+    const t = setTimeout(() => valorInputRef.current?.focus(), 300);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aberto, ocorrencia?.id]);
-
-  const valorInputRef = useRef<HTMLInputElement>(null);
 
   const valor = centavosParaReais(digitos);
 
@@ -334,7 +338,6 @@ export function EditarSheet({
             onChange={(e) => setDigitos(e.target.value.replace(/\D/g, '').slice(0, 12))}
             inputMode="numeric"
             aria-label="Valor em reais"
-            autoFocus
             style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1 }}
           />
         </button>
