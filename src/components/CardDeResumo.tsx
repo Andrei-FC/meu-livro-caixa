@@ -25,7 +25,7 @@ export function CardDeResumo({
   ocultarValores,
   onToggleOcultar,
 }: Props) {
-  const [interno, setInterno] = useState(false);
+  const [interno, setInterno] = useState(true);
   const oculto = ocultarValores ?? interno;
 
   function alternar() {
