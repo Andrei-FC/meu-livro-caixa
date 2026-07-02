@@ -91,7 +91,12 @@ export function Home() {
     | { tela: 'drill-cartao'; cartao: Cartao };
   const [pagina, setPagina] = useState<Pagina | null>(null);
 
-  const carregar = useCallback(() => {
+  // Carrega tudo do Supabase. Robusto a rede intermitente (PWA/iOS): em falha
+  // de REDE (Promise rejeitada, ex. "Load failed"), tenta de novo algumas vezes
+  // com backoff curto antes de desistir. Erro de DADOS (query retorna .error)
+  // não faz retry — não é transitório. Sempre libera o "carregando" no fim.
+  const carregar = useCallback((tentativa = 0): Promise<void> => {
+    const MAX_TENTATIVAS = 3;
     setErro(null);
     return Promise.all([
       supabase.from('contas').select('*').is('arquivada_em', null).order('criada_em'),
@@ -101,12 +106,22 @@ export function Home() {
       supabase.from('transferencias').select('*'),
     ]).then(([rc, rk, rl, re, rt]) => {
       const e = rc.error || rk.error || rl.error || re.error || rt.error;
-      if (e) setErro(e.message);
+      if (e) { setErro(e.message); setCarregando(false); return; }
       setContas(rc.data ?? []);
       setCartoes(rk.data ?? []);
       setLancamentos(rl.data ?? []);
       setExcecoes(re.data ?? []);
       setTransferencias(rt.data ?? []);
+      setErro(null);
+      setCarregando(false);
+    }).catch((err) => {
+      // Falha de rede: o Promise rejeita antes de qualquer .error. Sem este
+      // catch, ficava preso em "Carregando…". Tenta de novo com backoff.
+      if (tentativa < MAX_TENTATIVAS - 1) {
+        const espera = 800 * (tentativa + 1); // 0.8s, 1.6s
+        return new Promise<void>((res) => setTimeout(res, espera)).then(() => carregar(tentativa + 1));
+      }
+      setErro(err?.message ?? 'Falha de conexão. Verifique sua internet.');
       setCarregando(false);
     });
   }, []);
@@ -114,6 +129,17 @@ export function Home() {
   useEffect(() => {
     setCarregando(true);
     carregar();
+  }, [carregar]);
+
+  // Recarrega ao voltar o foco (PWA/iOS costuma congelar a aba em 2º plano;
+  // ao voltar, os dados podem estar velhos). Silencioso: não pisca "Carregando",
+  // atualiza em background. Também cobre o caso de a 1ª carga ter falhado.
+  useEffect(() => {
+    function aoVoltar() {
+      if (document.visibilityState === 'visible') carregar();
+    }
+    document.addEventListener('visibilitychange', aoVoltar);
+    return () => document.removeEventListener('visibilitychange', aoVoltar);
   }, [carregar]);
 
   const contaPorId = useMemo(() => new Map(contas.map((c) => [c.id, c])), [contas]);
@@ -408,10 +434,37 @@ export function Home() {
           paddingBottom: 'calc(96px + env(safe-area-inset-bottom))',
         }}
       >
-        {erro && (
-          <p className="type-caption" style={{ color: 'var(--value-saida)' }}>Erro ao carregar: {erro}</p>
-        )}
-        {carregando ? (
+        {erro && !carregando && contas.length === 0 ? (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 'var(--space-md)',
+              padding: 'var(--space-2xl) var(--space-lg)',
+              textAlign: 'center',
+            }}
+          >
+            <p className="type-body" style={{ color: 'var(--text-secondary)' }}>
+              Não foi possível carregar. Verifique sua conexão.
+            </p>
+            <button
+              type="button"
+              onClick={() => { setCarregando(true); carregar(); }}
+              className="type-body-small-strong"
+              style={{
+                background: 'var(--accent-default)',
+                color: 'var(--text-on-accent)',
+                border: 'none',
+                borderRadius: 'var(--radius-lg)',
+                padding: 'var(--space-sm) var(--space-xl)',
+                cursor: 'pointer',
+              }}
+            >
+              Tentar de novo
+            </button>
+          </div>
+        ) : carregando ? (
           <p className="type-caption" style={{ color: 'var(--text-muted)' }}>Carregando…</p>
         ) : (
           <>
