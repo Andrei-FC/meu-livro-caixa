@@ -48,7 +48,6 @@ export function Relatorio({ categorias, maiorGasto, recorte, fluxo }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
-      {temFluxo && <GraficoFluxoDoMes pontos={fluxo} />}
       {categorias.length > 0 && (
         <>
           <div style={{ padding: '4px 0 0 4px' }}>
@@ -76,6 +75,17 @@ export function Relatorio({ categorias, maiorGasto, recorte, fluxo }: Props) {
 
       {recorte.assinaturas.length > 0 && (
         <CardAssinaturas recorte={recorte} maiorGasto={maiorGasto} />
+      )}
+
+      {temFluxo && (
+        <>
+          <div style={{ padding: '4px 0 0 4px' }}>
+            <span className="type-label" style={{ color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
+              FLUXO DO MÊS
+            </span>
+          </div>
+          <GraficoFluxoDoMes pontos={fluxo} />
+        </>
       )}
     </div>
   );

@@ -1,5 +1,4 @@
 import { useId, useMemo } from 'react';
-import { formatarBR } from '../lib/formato';
 import type { PontoFluxo } from '../lib/recorrencia';
 
 /**
@@ -20,7 +19,7 @@ type Props = {
 // Geometria (coordenadas internas do viewBox; escala por preserveAspectRatio).
 const W = 358;
 const H = 240;
-const PAD_L = 44; // espaço p/ rótulos R$ à esquerda
+const PAD_L = 38; // espaço p/ rótulos R$ compactos à esquerda
 const PAD_R = 10;
 const PAD_T = 12;
 const PAD_B = 24; // espaço p/ dias embaixo
@@ -37,6 +36,28 @@ function passoRedondo(bruto: number): number {
   const norm = bruto / mag;
   const passo = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10;
   return passo * mag;
+}
+
+/**
+ * Rótulo compacto do eixo Y: sem centavos, com sufixo K/M p/ caber na margem
+ * estreita do celular. Ex.: 70000 → "R$ 70K"; 1200000 → "R$ 1,2M"; 340 → "R$ 340".
+ * Só o eixo usa isto; valores exatos (com centavos) vivem no card de resumo.
+ */
+function compactoBR(v: number): string {
+  const sinal = v < 0 ? '-' : '';
+  const abs = Math.abs(v);
+  let num: string;
+  let suf = '';
+  if (abs >= 1_000_000) { num = fmtCompacto(abs / 1_000_000); suf = 'M'; }
+  else if (abs >= 1_000) { num = fmtCompacto(abs / 1_000); suf = 'K'; }
+  else { num = String(Math.round(abs)); }
+  return `${sinal}R$ ${num}${suf}`;
+}
+
+/** 1 casa decimal só quando não é inteiro (1,2M mas 70K), vírgula BR. */
+function fmtCompacto(n: number): string {
+  const r = Math.round(n * 10) / 10;
+  return (Number.isInteger(r) ? String(r) : r.toFixed(1)).replace('.', ',');
 }
 
 export function GraficoFluxoDoMes({ pontos }: Props) {
@@ -102,12 +123,6 @@ export function GraficoFluxoDoMes({ pontos }: Props) {
         padding: 'var(--space-lg)',
       }}
     >
-      <div style={{ marginBottom: 'var(--space-md)' }}>
-        <span className="type-label" style={{ color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
-          FLUXO DO MÊS
-        </span>
-      </div>
-
       <svg
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
@@ -140,7 +155,7 @@ export function GraficoFluxoDoMes({ pontos }: Props) {
               className="type-micro"
               fill="var(--text-muted)"
             >
-              {formatarBR(t.v, { prefixo: true })}
+              {compactoBR(t.v)}
             </text>
           </g>
         ))}
