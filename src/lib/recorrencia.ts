@@ -698,3 +698,75 @@ export function saldoAcumuladoPorConta(
   }
   return acc;
 }
+
+/**
+ * Fluxo do mês (§5.5, gráfico) — saldo em conta ao longo dos dias do mês.
+ *
+ * Um ponto por dia (1..N do mês), com o saldo em conta acumulado até aquele
+ * dia inclusive. Começa do `herdado` (§4.7) e aplica, na ordem do calendário,
+ * os MESMOS deltas que compõem `liquidoDoMes`:
+ *  - lançamentos de conta-corrente (cartão não pesa na data da compra, §4.8);
+ *  - faturas de cartão que vencem no mês, no dia do pagamento (§4.4/§4.8);
+ *  - transferências que envolvem poupança (depósito debita, retirada credita,
+ *    §4.5); corrente↔corrente é neutro.
+ *
+ * Entre dias sem movimento o saldo é constante (degraus horizontais na curva).
+ * Cobre o MÊS INTEIRO — fato + projeção — coerente com o card de resumo (§5.1):
+ * o último ponto é exatamente `herdado + liquidoDoMes` = saldo do mês. Função
+ * pura, sem materializar linhas.
+ */
+export interface PontoFluxo {
+  dia: number;
+  saldo: number;
+}
+
+export function fluxoDoMes(
+  lancamentos: Lancamento[],
+  transferencias: Transferencia[],
+  contas: Conta[],
+  cartoes: Cartao[],
+  alvoAno: number,
+  alvoMes: number,
+  herdado: number,
+  hoje: Date,
+  excecoes?: IndiceExcecoes,
+): PontoFluxo[] {
+  const tipoConta = new Map(contas.map((c) => [c.id, c.tipo]));
+  const diasNoMes = new Date(alvoAno, alvoMes + 1, 0).getDate();
+
+  // Delta por dia (crédito positivo, débito negativo).
+  const delta = new Array<number>(diasNoMes + 1).fill(0); // índice 1..diasNoMes
+
+  // Lançamentos de conta-corrente (cartão fica de fora — §4.8).
+  for (const o of lancamentosNoMes(lancamentos, alvoAno, alvoMes, hoje, excecoes)) {
+    if (o.cartao_id != null) continue;
+    const [, , dia] = parteData(o.data);
+    delta[dia] += o.tipo === 'entrada' ? o.valor : -o.valor;
+  }
+
+  // Faturas que vencem no mês, no dia do pagamento (§4.4/§4.8).
+  for (const k of cartoes) {
+    const peso = faturaNoMes(lancamentos, k, alvoAno, alvoMes, hoje, excecoes);
+    if (peso <= 0) continue;
+    const dia = diaPagamentoNoMes(k, alvoAno, alvoMes);
+    delta[dia] -= peso;
+  }
+
+  // Transferências com poupança (§4.5).
+  for (const o of transferenciasNoMes(transferencias, alvoAno, alvoMes, hoje)) {
+    const destinoPoupanca = tipoConta.get(o.para_conta_id) === 'poupanca';
+    const origemPoupanca = tipoConta.get(o.de_conta_id) === 'poupanca';
+    const [, , dia] = parteData(o.data);
+    if (destinoPoupanca && !origemPoupanca) delta[dia] -= o.valor;      // depósito
+    else if (origemPoupanca && !destinoPoupanca) delta[dia] += o.valor; // retirada
+  }
+
+  // Acumula do herdado, um ponto por dia.
+  const pontos: PontoFluxo[] = [];
+  let acc = herdado;
+  for (let dia = 1; dia <= diasNoMes; dia++) {
+    acc += delta[dia];
+    pontos.push({ dia, saldo: acc });
+  }
+  return pontos;
+}

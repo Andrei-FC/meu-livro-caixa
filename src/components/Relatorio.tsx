@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { formatarBR } from '../lib/formato';
 import type { CategoriaRelatorio, RecorteAssinaturas } from '../lib/relatorio';
+import type { PontoFluxo } from '../lib/recorrencia';
+import { GraficoFluxoDoMes } from './GraficoFluxoDoMes';
 
 /**
  * Relatório (§5.5) — aba da Home, tela de VER, não de administrar. Só leitura:
@@ -24,10 +26,16 @@ type Props = {
   /** Escala comum das barras: maior gasto do mês (categorias e assinaturas). */
   maiorGasto: number;
   recorte: RecorteAssinaturas;
+  /** Saldo em conta dia a dia, p/ o gráfico de fluxo do mês (§5.5). */
+  fluxo: PontoFluxo[];
 };
 
-export function Relatorio({ categorias, maiorGasto, recorte }: Props) {
-  if (categorias.length === 0 && recorte.assinaturas.length === 0) {
+export function Relatorio({ categorias, maiorGasto, recorte, fluxo }: Props) {
+  const semDados = categorias.length === 0 && recorte.assinaturas.length === 0;
+  // O gráfico só informa quando o saldo varia no mês; plano/vazio não agrega.
+  const temFluxo = fluxo.length > 1 && fluxo.some((p) => p.saldo !== fluxo[0].saldo);
+
+  if (semDados && !temFluxo) {
     return (
       <p
         className="type-caption"
@@ -40,6 +48,7 @@ export function Relatorio({ categorias, maiorGasto, recorte }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+      {temFluxo && <GraficoFluxoDoMes pontos={fluxo} />}
       {categorias.length > 0 && (
         <>
           <div style={{ padding: '4px 0 0 4px' }}>

@@ -10,6 +10,7 @@ import {
   realizadoDoCiclo,
   diaPagamentoNoMes,
   saldoAcumuladoPorConta,
+  fluxoDoMes,
   parteData,
   type OcorrenciaLancamento,
 } from '../lib/recorrencia';
@@ -271,6 +272,13 @@ export function Home() {
   );
   const saldoMes = herdado + liquidoMes;
 
+  // Fluxo do mês (§5.5): saldo em conta dia a dia, partindo do herdado. Último
+  // ponto == saldoMes (mesma mecânica do liquidoDoMes). Alimenta o gráfico.
+  const fluxo = useMemo(
+    () => fluxoDoMes(lancamentos, transferencias, contas, cartoes, ano, mes, herdado, hoje, indiceExcecoes),
+    [lancamentos, transferencias, contas, cartoes, ano, mes, herdado, hoje, indiceExcecoes],
+  );
+
   function mudarMes(delta: number) {
     const d = new Date(ano, mes + delta, 1);
     setAno(d.getFullYear());
@@ -464,7 +472,7 @@ export function Home() {
             )}
 
             {aba === 'relatorio' && (
-              <Relatorio categorias={categoriasRelatorio} maiorGasto={maiorGasto} recorte={recorte} />
+              <Relatorio categorias={categoriasRelatorio} maiorGasto={maiorGasto} recorte={recorte} fluxo={fluxo} />
             )}
           </>
         )}
