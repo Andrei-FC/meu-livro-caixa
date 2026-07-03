@@ -49,11 +49,15 @@ type Props = {
   onSalvou: () => void;
 };
 
-function reaisParaCentavos(valor: number): string {
-  return String(Math.round(valor * 100));
-}
-function centavosParaReais(digitos: string): number {
-  return Number(digitos || '0') / 100;
+/**
+ * Parse de texto livre BR → número em reais. Aceita "1.234,56", "1234,5",
+ * "150", ",5". Ignora tudo que não for dígito, vírgula ou ponto; trata ponto
+ * como separador de milhar (removido) e vírgula como decimal. Vazio → 0.
+ */
+function textoParaReais(texto: string): number {
+  const limpo = texto.replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.');
+  const n = Number(limpo);
+  return Number.isFinite(n) ? n : 0;
 }
 
 export function EditarSheet({
@@ -69,7 +73,7 @@ export function EditarSheet({
   const ehSerie = !!ocorrencia?.serieId && regra?.repeticao !== 'avista';
 
   // Campos pré-preenchidos a partir da ocorrência (+ nota da regra).
-  const [digitos, setDigitos] = useState('');
+  const [valorTexto, setValorTexto] = useState('');
   const [descricao, setDescricao] = useState('');
   const [data, setData] = useState('');
   const [nota, setNota] = useState('');
@@ -88,25 +92,23 @@ export function EditarSheet({
   const [erro, setErro] = useState<string | null>(null);
   const valorInputRef = useRef<HTMLInputElement>(null);
 
-  // Sincroniza os campos quando abre numa nova ocorrência + foca o valor.
+  // Sincroniza os campos quando abre numa nova ocorrência.
   useEffect(() => {
     if (!aberto || !ocorrencia || !regra) return;
-    setDigitos(reaisParaCentavos(ocorrencia.valor));
+    setValorTexto(formatarBR(ocorrencia.valor));
     setDescricao(ocorrencia.descricao);
     setData(ocorrencia.data);
     setNota(regra.nota ?? '');
     setContaSel(ocorrencia.cartao_id ? null : contas.find((c) => c.id === ocorrencia.conta_id) ?? null);
     setCartaoSel(ocorrencia.cartao_id ? cartoes.find((k) => k.id === ocorrencia.cartao_id) ?? null : null);
     setErro(null);
-    // Foco no valor após a animação de abertura do sheet. autoFocus não serve
-    // aqui: o input não remonta a cada abertura (só muda `ocorrencia`), e focar
-    // durante o slide-in é ignorado no iOS. O timeout deixa a folha assentar.
-    const t = setTimeout(() => valorInputRef.current?.focus(), 300);
-    return () => clearTimeout(t);
+    // Sem foco automático aqui (decisão de UX): na edição o usuário toca no
+    // campo que quer mexer; o caret cai onde ele tocou. Abrir o teclado sozinho
+    // atrapalharia quem só quer conferir/editar outro campo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aberto, ocorrencia?.id]);
 
-  const valor = centavosParaReais(digitos);
+  const valor = textoParaReais(valorTexto);
 
   const sugestoes = useMemo(() => {
     const q = descricao.trim().toLowerCase();
@@ -324,23 +326,34 @@ export function EditarSheet({
           </button>
         </div>
 
-        {/* VALOR — display + input de dígitos (mesmo padrão do LancarSheet) */}
-        <button
-          type="button"
-          onClick={() => valorInputRef.current?.focus()}
-          style={{ border: 'none', background: 'transparent', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '12px 0 20px', width: '100%', cursor: 'text' }}
-        >
+        {/* VALOR — input de texto livre visível: o caret cai onde o usuário
+            toca, e ele conserta o dígito no lugar sem perder o resto (§ UX). */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '12px 0 20px', width: '100%' }}>
           <span className="type-label" style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Valor</span>
-          <span className="type-display" style={{ color: 'var(--text-primary)' }}>R$ {formatarBR(valor)}</span>
-          <input
-            ref={valorInputRef}
-            value={digitos}
-            onChange={(e) => setDigitos(e.target.value.replace(/\D/g, '').slice(0, 12))}
-            inputMode="numeric"
-            aria-label="Valor em reais"
-            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1 }}
-          />
-        </button>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 6, maxWidth: '100%' }}>
+            <span className="type-display" style={{ color: 'var(--text-muted)' }}>R$</span>
+            <input
+              ref={valorInputRef}
+              value={valorTexto}
+              onChange={(e) => setValorTexto(e.target.value.replace(/[^\d.,]/g, ''))}
+              inputMode="decimal"
+              placeholder="0,00"
+              aria-label="Valor em reais"
+              className="type-display"
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--text-primary)',
+                textAlign: 'left',
+                width: `${Math.max(valorTexto.length, 4) + 1}ch`,
+                maxWidth: '100%',
+                outline: 'none',
+                padding: 0,
+                caretColor: 'var(--accent-default)',
+              }}
+            />
+          </div>
+        </div>
 
         {/* Body */}
         <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18, padding: '4px 20px 20px' }}>

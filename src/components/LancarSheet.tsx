@@ -141,9 +141,15 @@ export function LancarSheet({
   }
 
   // Ao abrir, aplica o estado inicial (importante no modo fixo, que precisa
-  // fixar o lado da poupança sempre que o sheet reabre).
+  // fixar o lado da poupança sempre que o sheet reabre) e foca o valor para
+  // abrir o teclado numérico. autoFocus não serve: o input remonta atrás da
+  // animação de slide-in do BottomSheet e o iOS ignora foco durante o gesto —
+  // o timeout deixa a folha assentar antes de focar.
   useEffect(() => {
-    if (aberto) resetar();
+    if (!aberto) return;
+    resetar();
+    const t = setTimeout(() => valorInputRef.current?.focus(), 300);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aberto]);
 
@@ -242,10 +248,10 @@ export function LancarSheet({
           <span className="type-label" style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Valor</span>
           <input
             ref={valorInputRef}
-            value={`R$ ${formatarBR(valor)}`}
+            value={digitos ? `R$ ${formatarBR(valor)}` : ''}
             onChange={(e) => setDigitos(e.target.value.replace(/\D/g, '').slice(0, 12))}
             inputMode="numeric"
-            autoFocus
+            placeholder="R$ 0,00"
             aria-label="Valor em reais"
             className="type-display"
             style={{
@@ -256,11 +262,10 @@ export function LancarSheet({
               width: '100%',
               outline: 'none',
               padding: 0,
-              // mantém o caret no fim mesmo com o texto formatado
               caretColor: 'var(--accent-default)',
             }}
             onFocus={(e) => {
-              // posiciona o cursor no fim ao focar
+              // caret sempre no fim (o dígito entra pela direita no modo centavos)
               const v = e.target.value;
               e.target.setSelectionRange(v.length, v.length);
             }}
