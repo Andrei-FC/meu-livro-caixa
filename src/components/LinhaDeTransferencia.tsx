@@ -1,4 +1,3 @@
-import { Tag } from './Tag';
 import { Valor } from './Valor';
 import { IconePencil, IconeChevronRight, IconeSwapHorizontal, IconeArrowSmDown, IconeArrowSmUp } from '../icons';
 
@@ -119,23 +118,22 @@ export function LinhaDeTransferencia({ variante, valor, origem, destino, onEdita
   );
 }
 
-/** Nome da ponta com a bolinha do tema (mesma Tag das outras linhas, §4.9). */
+/** Nome da ponta (origem/destino). Sem bolinha: o nome já é explícito, a
+ *  bolinha do tema pesava (diferente das linhas de lançamento, onde a conta
+ *  não é nomeada e a bolinha é a única marca). */
 function PontaTag({ ponta }: { ponta: Ponta }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-      <Tag cor="conta" tema={ponta.tema} />
-      <span
-        className="type-label"
-        style={{
-          color: 'var(--text-secondary)',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          minWidth: 0,
-        }}
-      >
-        {ponta.nome}
-      </span>
+    <span
+      className="type-label"
+      style={{
+        color: 'var(--text-secondary)',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+        minWidth: 0,
+      }}
+    >
+      {ponta.nome}
     </span>
   );
 }

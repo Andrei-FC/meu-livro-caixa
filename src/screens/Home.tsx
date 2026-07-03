@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { formatarBR } from '../lib/formato';
 import type { Conta, Cartao, Lancamento, ExcecaoSerie, Transferencia } from '../types/db';
 import {
   lancamentosNoMes,
@@ -35,6 +36,7 @@ import {
   type DestinoMenu,
   LancarSheet,
   EditarSheet,
+  ModalDeAlerta,
   Relatorio,
 } from '../components';
 import { GerenciarContas } from './GerenciarContas';
@@ -91,6 +93,10 @@ export function Home() {
   // Sheet de depósito/retirada da poupança (§5.4): reusa o LancarSheet em modo
   // transferência fixa. null = fechado.
   const [transfFixa, setTransfFixa] = useState<{ poupanca: Conta; direcao: 'deposito' | 'retirada' } | null>(null);
+  // Transferência a apagar (§5.7, simplificado): tocar no editar da linha abre
+  // confirmação. Apagar reverte o saldo naturalmente — nada é materializado, o
+  // dinheiro volta aos lugares como se nunca tivesse saído (§4.4, princípio 4).
+  const [transfApagar, setTransfApagar] = useState<OcorrenciaTransferencia | null>(null);
 
   // Roteamento por estado para as PÁGINAS PRÓPRIAS (§5.8) — telas cheias fora
   // das abas da Home (gerenciar/criar/editar conta e cartão). null = Home.
@@ -565,6 +571,7 @@ export function Home() {
                 realizadoPorCartao={realizadoPorCartao}
                 fase={(k) => faseFatura(k, ano, mes, hoje)}
                 onEditar={setEmEdicao}
+                onApagarTransf={setTransfApagar}
                 onAbrirCartao={(k) => setPagina({ tela: 'drill-cartao', cartao: k })}
                 saldoInicial={herdado}
               />
@@ -652,6 +659,26 @@ export function Home() {
         onFechar={() => setEmEdicao(null)}
         onSalvou={() => { carregar(); }}
       />
+
+      {transfApagar && (
+        <ModalDeAlerta
+          tipo="confirmacao"
+          titulo="Apagar transferência?"
+          corpo={`A transferência de ${formatarBR(transfApagar.valor, { prefixo: true })} será removida. O dinheiro volta aos lugares de origem, como se nunca tivesse saído.`}
+          primaria={{
+            rotulo: 'Apagar',
+            onClick: async () => {
+              // Apaga a regra em transferencias (§5.7 simplificado). O saldo
+              // recalcula sozinho — nada materializado, nenhum "ajuste" (§4.4).
+              await supabase.from('transferencias').delete().eq('id', transfApagar.origemId);
+              setTransfApagar(null);
+              carregar();
+            },
+          }}
+          secundaria={{ rotulo: 'Cancelar', onClick: () => setTransfApagar(null) }}
+          onScrim={() => setTransfApagar(null)}
+        />
+      )}
     </div>
   );
 }
@@ -676,10 +703,11 @@ function Lancamentos(props: {
   realizadoPorCartao: Map<string, number>;
   fase: (k: Cartao) => FaseFatura;
   onEditar: (o: OcorrenciaLancamento) => void;
+  onApagarTransf: (t: OcorrenciaTransferencia) => void;
   onAbrirCartao: (k: Cartao) => void;
   saldoInicial: number;
 }) {
-  const { ano, mes, ocorrencias, transferencias, cartoes, contaPorId, faturaDoMes, realizadoPorCartao, fase, onEditar, onAbrirCartao, saldoInicial } = props;
+  const { ano, mes, ocorrencias, transferencias, cartoes, contaPorId, faturaDoMes, realizadoPorCartao, fase, onEditar, onApagarTransf, onAbrirCartao, saldoInicial } = props;
 
   // Agrupa por dia. A data de cada ocorrência já vem resolvida pelo motor
   // (§4.1: âncora no dia + clamp). A fatura de cada cartão entra no DIA DO
@@ -770,7 +798,7 @@ function Lancamentos(props: {
                     valor={it.t.valor}
                     origem={(() => { const c = contaPorId.get(it.t.de_conta_id); return { nome: c?.nome ?? '—', tema: c?.tema }; })()}
                     destino={(() => { const c = contaPorId.get(it.t.para_conta_id); return { nome: c?.nome ?? '—', tema: c?.tema }; })()}
-                    onEditar={() => { /* TODO: editar transferência (§5.7) */ }}
+                    onEditar={() => onApagarTransf(it.t)}
                   />
                 ) : (
                   <LinhaDeFatura
