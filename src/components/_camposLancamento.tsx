@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { IconeChevronRight, IconeMinus, IconePlus, IconeCalendar, IconeImage, LogoBanco } from '../icons';
+import { IconeChevronRight, IconeMinus, IconePlus, IconeCalendar, IconeImage, LogoBanco, ICONES_POUPANCA } from '../icons';
 import { formatarBR } from '../lib/formato';
 import type { LancamentoTipo, RepeticaoTipo } from '../types/db';
 
@@ -235,15 +235,18 @@ export function CampoData({ valor, onMudar }: { valor: string; onMudar: (s: stri
 }
 
 export function CampoSeletor({
-  label, valor, ehCartao, banco, tema, onAbrir,
-}: { label: string; valor: string; ehCartao?: boolean; banco?: string | null; tema?: string | null; onAbrir: () => void }) {
+  label, valor, ehCartao, banco, tema, tipoEntidade, onAbrir, desabilitado,
+}: { label: string; valor: string; ehCartao?: boolean; banco?: string | null; tema?: string | null; tipoEntidade?: 'corrente' | 'poupanca'; onAbrir: () => void; desabilitado?: boolean }) {
   const temLogo = banco != null || tema != null;
+  // Poupança resolve o ícone da biblioteca temática; conta/cartão, o logo do banco.
+  const IconePoup = tipoEntidade === 'poupanca' && banco ? ICONES_POUPANCA[banco] : null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <span className="type-label" style={{ color: 'var(--text-secondary)' }}>{label}</span>
       <button
         type="button"
-        onClick={onAbrir}
+        onClick={desabilitado ? undefined : onAbrir}
+        disabled={desabilitado}
         style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '12px 14px',
@@ -251,7 +254,9 @@ export function CampoSeletor({
           border: '1px solid var(--border-default)',
           background: 'var(--bg-surface)',
           color: 'var(--text-primary)',
-          width: '100%', textAlign: 'left', cursor: 'pointer',
+          width: '100%', textAlign: 'left',
+          cursor: desabilitado ? 'default' : 'pointer',
+          opacity: desabilitado ? 0.65 : 1,
         }}
       >
         {/* Lead icon: swatch temático com o logo do banco (Figma "Show lead
@@ -272,7 +277,11 @@ export function CampoSeletor({
               flex: '0 0 auto',
             }}
           >
-            {banco ? <LogoBanco chave={banco} tamanho={16} /> : <IconeImage tamanho={14} />}
+            {IconePoup
+              ? <IconePoup tamanho={16} />
+              : banco && tipoEntidade !== 'poupanca'
+              ? <LogoBanco chave={banco} tamanho={16} />
+              : <IconeImage tamanho={14} />}
           </span>
         )}
         {ehCartao && (
@@ -281,9 +290,11 @@ export function CampoSeletor({
           </span>
         )}
         <span className="type-body" style={{ flex: 1 }}>{valor}</span>
-        <span aria-hidden style={{ color: 'var(--text-muted)', display: 'inline-flex' }}>
-          <IconeChevronRight tamanho={20} />
-        </span>
+        {!desabilitado && (
+          <span aria-hidden style={{ color: 'var(--text-muted)', display: 'inline-flex' }}>
+            <IconeChevronRight tamanho={20} />
+          </span>
+        )}
       </button>
     </div>
   );

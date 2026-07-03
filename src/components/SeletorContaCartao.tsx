@@ -1,5 +1,5 @@
 import { BottomSheet } from './BottomSheet';
-import { IconeImage, LogoBanco } from '../icons';
+import { IconeImage, LogoBanco, ICONES_POUPANCA } from '../icons';
 import type { Conta, Cartao } from '../types/db';
 
 /**
@@ -37,6 +37,8 @@ type Props = {
   contexto: ContextoSeletor;
   contas: Conta[];
   cartoes: Cartao[];
+  /** Em depósito/retirada dedicados, o lado livre só pode ser corrente (§5.4). */
+  soCorrentes?: boolean;
   onFechar: () => void;
   onSelecionar: (sel: Selecao) => void;
 };
@@ -46,16 +48,17 @@ export function SeletorContaCartao({
   contexto,
   contas,
   cartoes,
+  soCorrentes,
   onFechar,
   onSelecionar,
 }: Props) {
   const ehTransferencia = contexto === 'transf-saida' || contexto === 'transf-destino';
   const ehCartaoConta = contexto === 'cartao-conta';
-  // Transferência lista correntes + poupanças. cartao-conta lista só correntes
-  // (a conta pagadora do cartão, §4.5). Gasto/receita: correntes (+ cartões).
-  const correntes = contas.filter((c) =>
-    ehTransferencia ? true : c.tipo === 'corrente',
-  );
+  // Transferência lista correntes E poupanças (em seções separadas). cartao-conta
+  // e gasto/receita listam só correntes (§4.5). Gasto/receita: correntes + cartões.
+  // soCorrentes (depósito/retirada dedicado) esconde as poupanças do lado livre.
+  const correntes = contas.filter((c) => c.tipo === 'corrente');
+  const poupancas = ehTransferencia && !soCorrentes ? contas.filter((c) => c.tipo === 'poupanca') : [];
   const mostrarCartoes = !ehTransferencia && !ehCartaoConta && cartoes.length > 0;
 
   return (
@@ -78,10 +81,27 @@ export function SeletorContaCartao({
             key={c.id}
             nome={c.nome}
             tema={c.tema}
-            banco={c.icone}
+            tipo="corrente"
+            icone={c.icone}
             onClick={() => onSelecionar({ kind: 'conta', conta: c })}
           />
         ))}
+
+        {poupancas.length > 0 && (
+          <>
+            <Secao titulo="Poupanças" />
+            {poupancas.map((c) => (
+              <Linha
+                key={c.id}
+                nome={c.nome}
+                tema={c.tema}
+                tipo="poupanca"
+                icone={c.icone}
+                onClick={() => onSelecionar({ kind: 'conta', conta: c })}
+              />
+            ))}
+          </>
+        )}
 
         {mostrarCartoes && (
           <>
@@ -91,7 +111,8 @@ export function SeletorContaCartao({
                 key={k.id}
                 nome={k.nome}
                 tema={k.tema}
-                banco={k.banco}
+                tipo="corrente"
+                icone={k.banco}
                 onClick={() => onSelecionar({ kind: 'cartao', cartao: k })}
               />
             ))}
@@ -115,10 +136,12 @@ function Secao({ titulo }: { titulo: string }) {
   );
 }
 
-function Linha({ nome, tema, banco, onClick }: { nome: string; tema: string | null; banco?: string | null; onClick: () => void }) {
+function Linha({ nome, tema, tipo, icone, onClick }: { nome: string; tema: string | null; tipo: 'corrente' | 'poupanca'; icone?: string | null; onClick: () => void }) {
   // Swatch temático: data-card-theme resolve --theme-bg/--theme-text (§4.9);
   // sem tema, cai no slate neutro. Mesmo contrato visual do CardDeEntidade.
+  // Poupança resolve o ícone da biblioteca temática; conta/cartão, o logo do banco.
   const semTema = !tema;
+  const IconePoup = tipo === 'poupanca' && icone ? ICONES_POUPANCA[icone] : null;
   return (
     <button
       type="button"
@@ -150,7 +173,9 @@ function Linha({ nome, tema, banco, onClick }: { nome: string; tema: string | nu
           flex: '0 0 auto',
         }}
       >
-        {banco ? <LogoBanco chave={banco} tamanho={20} /> : <IconeImage tamanho={20} />}
+        {tipo === 'poupanca'
+          ? (IconePoup ? <IconePoup tamanho={20} /> : <IconeImage tamanho={20} />)
+          : (icone ? <LogoBanco chave={icone} tamanho={20} /> : <IconeImage tamanho={20} />)}
       </span>
       <span className="type-body" style={{ color: 'var(--text-primary)' }}>
         {nome}

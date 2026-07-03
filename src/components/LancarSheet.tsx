@@ -326,6 +326,8 @@ export function LancarSheet({
                 valor={origemSel?.nome ?? 'Selecionar'}
                 banco={origemSel?.icone}
                 tema={origemSel?.tema}
+                tipoEntidade={origemSel?.tipo}
+                desabilitado={transferenciaFixa?.direcao === 'retirada'}
                 onAbrir={() => setSeletor('transf-saida')}
               />
               <CampoSeletor
@@ -333,6 +335,8 @@ export function LancarSheet({
                 valor={destinoSel?.nome ?? 'Selecionar'}
                 banco={destinoSel?.icone}
                 tema={destinoSel?.tema}
+                tipoEntidade={destinoSel?.tipo}
+                desabilitado={transferenciaFixa?.direcao === 'deposito'}
                 onAbrir={() => setSeletor('transf-destino')}
               />
               {/* Transferência pode ser recorrente, nunca parcelada (§3.4) */}
@@ -372,6 +376,7 @@ export function LancarSheet({
           contexto={seletor}
           contas={contas}
           cartoes={cartoes}
+          soCorrentes={!!transferenciaFixa}
           onFechar={() => setSeletor(null)}
           onSelecionar={aoSelecionar}
         />
