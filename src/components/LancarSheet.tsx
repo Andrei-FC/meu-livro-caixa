@@ -143,13 +143,17 @@ export function LancarSheet({
   // Ao abrir, aplica o estado inicial (importante no modo fixo, que precisa
   // fixar o lado da poupança sempre que o sheet reabre) e foca o valor para
   // abrir o teclado numérico. autoFocus não serve: o input remonta atrás da
-  // animação de slide-in do BottomSheet e o iOS ignora foco durante o gesto —
-  // o timeout deixa a folha assentar antes de focar.
+  // animação de slide-in do BottomSheet. Dois rAF encadeados focam logo após o
+  // input existir e ter layout — mais perto da cadeia de render que o iOS
+  // respeita para abrir o teclado do que um setTimeout solto.
   useEffect(() => {
     if (!aberto) return;
     resetar();
-    const t = setTimeout(() => valorInputRef.current?.focus(), 300);
-    return () => clearTimeout(t);
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => valorInputRef.current?.focus());
+    });
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aberto]);
 
@@ -243,33 +247,39 @@ export function LancarSheet({
           </button>
         </div>
 
-        {/* ── VALOR: o input É o display (toque direto abre o teclado no iOS) ── */}
+        {/* ── VALOR: R$ (Body Strong, fixo) + número (display, o input). O R$
+            fora do input mantém peso/cor constantes e alinha ao centro do
+            número; o input carrega só o número, então o caret fica limpo. ── */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '16px 0 24px' }}>
           <span className="type-label" style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Valor</span>
-          <input
-            ref={valorInputRef}
-            value={digitos ? `R$ ${formatarBR(valor)}` : ''}
-            onChange={(e) => setDigitos(e.target.value.replace(/\D/g, '').slice(0, 12))}
-            inputMode="numeric"
-            placeholder="R$ 0,00"
-            aria-label="Valor em reais"
-            className="type-display"
-            style={{
-              border: 'none',
-              background: 'transparent',
-              color: 'var(--text-primary)',
-              textAlign: 'center',
-              width: '100%',
-              outline: 'none',
-              padding: 0,
-              caretColor: 'var(--accent-default)',
-            }}
-            onFocus={(e) => {
-              // caret sempre no fim (o dígito entra pela direita no modo centavos)
-              const v = e.target.value;
-              e.target.setSelectionRange(v.length, v.length);
-            }}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, maxWidth: '100%' }}>
+            <span className="type-body-strong" style={{ color: 'var(--text-primary)', flex: '0 0 auto' }}>R$</span>
+            <input
+              ref={valorInputRef}
+              value={digitos ? formatarBR(valor) : ''}
+              onChange={(e) => setDigitos(e.target.value.replace(/\D/g, '').slice(0, 12))}
+              inputMode="numeric"
+              placeholder="0,00"
+              aria-label="Valor em reais"
+              className="type-display"
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--text-primary)',
+                textAlign: 'left',
+                width: `${Math.max((digitos ? formatarBR(valor) : '0,00').length, 4)}ch`,
+                maxWidth: '100%',
+                outline: 'none',
+                padding: 0,
+                caretColor: 'var(--accent-default)',
+              }}
+              onFocus={(e) => {
+                // caret sempre no fim (o dígito entra pela direita no modo centavos)
+                const v = e.target.value;
+                e.target.setSelectionRange(v.length, v.length);
+              }}
+            />
+          </div>
         </div>
 
         {/* ── Body rolável ── */}

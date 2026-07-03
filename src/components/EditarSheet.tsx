@@ -330,8 +330,8 @@ export function EditarSheet({
             toca, e ele conserta o dígito no lugar sem perder o resto (§ UX). */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '12px 0 20px', width: '100%' }}>
           <span className="type-label" style={{ color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>Valor</span>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 6, maxWidth: '100%' }}>
-            <span className="type-display" style={{ color: 'var(--text-muted)' }}>R$</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, maxWidth: '100%' }}>
+            <span className="type-body-strong" style={{ color: 'var(--text-primary)', flex: '0 0 auto' }}>R$</span>
             <input
               ref={valorInputRef}
               value={valorTexto}
