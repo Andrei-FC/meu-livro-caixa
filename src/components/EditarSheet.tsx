@@ -340,13 +340,14 @@ export function EditarSheet({
               placeholder="0,00"
               aria-label="Valor em reais"
               className="type-display"
+              size={Math.max(valorTexto.length, 4)}
               style={{
                 border: 'none',
                 background: 'transparent',
                 color: 'var(--text-primary)',
                 textAlign: 'left',
-                width: `${Math.max(valorTexto.length, 4) + 1}ch`,
-                maxWidth: '100%',
+                width: 'auto',
+                flex: '0 0 auto',
                 outline: 'none',
                 padding: 0,
                 caretColor: 'var(--accent-default)',
