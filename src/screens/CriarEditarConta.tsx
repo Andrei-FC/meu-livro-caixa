@@ -81,8 +81,10 @@ export function CriarEditarConta({ conta, onVoltar, onSalvou }: Props) {
     <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-page)' }}>
       <Header variante="chuld" titulo={editando ? 'Editar Conta' : 'Nova Conta'} onVoltar={onVoltar} />
 
-      {/* Corpo */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 18, padding: 'var(--space-sm) var(--space-xl) var(--space-xl)' }}>
+      {/* Corpo — rola sob o footer fixo. O padding-bottom reserva espaço para
+          o Salvar fixo E mantém o botão destrutivo (Arquivar) fora da área
+          visível da base: só se alcança rolando, evitando toque acidental. */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 18, padding: 'var(--space-sm) var(--space-xl) 120px' }}>
         <Input label="Nome da conta" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Conta principal" />
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
@@ -98,6 +100,16 @@ export function CriarEditarConta({ conta, onVoltar, onSalvou }: Props) {
         />
 
         {erro && <span className="type-caption" style={{ color: 'var(--value-saida)' }}>{erro}</span>}
+
+        {/* Arquivar (só em edição) — §4.10. Dentro do corpo, no fim: fica atrás
+            do Salvar fixo e exige rolar para alcançar (anti-toque-acidental). */}
+        {editando && (
+          <div style={{ marginTop: 'var(--space-md)' }}>
+            <Botao hierarquia="secondary" onClick={arquivar} disabled={salvando} style={{ color: 'var(--value-saida)' }}>
+              Arquivar conta
+            </Botao>
+          </div>
+        )}
       </div>
 
       <SeletorDeIcone
@@ -109,20 +121,13 @@ export function CriarEditarConta({ conta, onVoltar, onSalvou }: Props) {
         onSelecionar={(chave) => { setIcone(chave); setSheetIcone(false); }}
       />
 
-      {/* Arquivar (só em edição) — §4.10 */}
-      {editando && (
-        <div style={{ padding: 'var(--space-md) var(--space-xl)' }}>
-          <Botao hierarquia="secondary" onClick={arquivar} disabled={salvando} style={{ color: 'var(--value-saida)' }}>
-            Arquivar conta
+      {/* Footer fixo: Salvar — sempre acessível na base, cobre o Arquivar. */}
+      <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 10, borderTop: '1px solid var(--border-default)', background: 'var(--bg-surface)' }}>
+        <div style={{ maxWidth: 480, margin: '0 auto', padding: 'var(--space-md) var(--space-xl) calc(var(--space-xl) + env(safe-area-inset-bottom))' }}>
+          <Botao onClick={salvar} disabled={!podeSalvar}>
+            {salvando ? 'Salvando…' : 'Salvar conta'}
           </Botao>
         </div>
-      )}
-
-      {/* Footer fixo: Salvar */}
-      <div style={{ borderTop: '1px solid var(--border-default)', background: 'var(--bg-surface)', padding: 'var(--space-md) var(--space-xl) calc(var(--space-xl) + env(safe-area-inset-bottom))' }}>
-        <Botao onClick={salvar} disabled={!podeSalvar}>
-          {salvando ? 'Salvando…' : 'Salvar conta'}
-        </Botao>
       </div>
     </div>
   );

@@ -118,7 +118,7 @@ export function CriarEditarCartao({ cartao, contas, onVoltar, onSalvou }: Props)
     <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-page)' }}>
       <Header variante="chuld" titulo={editando ? 'Editar Cartão' : 'Novo Cartão'} onVoltar={onVoltar} />
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 18, padding: 'var(--space-sm) var(--space-xl) var(--space-xl)' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 18, padding: 'var(--space-sm) var(--space-xl) 120px' }}>
         <Input label="Nome do cartão" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nubank" />
 
         {/* Previsão mensal de gasto — hint travado em §4.4 */}
@@ -240,6 +240,16 @@ export function CriarEditarCartao({ cartao, contas, onVoltar, onSalvou }: Props)
         />
 
         {erro && <span className="type-caption" style={{ color: 'var(--value-saida)' }}>{erro}</span>}
+
+        {/* Apagar (só em edição) — §4.10. Dentro do corpo, no fim: fica atrás do
+            Salvar fixo e exige rolar para alcançar (anti-toque-acidental). */}
+        {editando && (
+          <div style={{ marginTop: 'var(--space-md)' }}>
+            <Botao hierarquia="secondary" onClick={apagar} disabled={salvando} style={{ color: 'var(--value-saida)' }}>
+              Apagar cartão
+            </Botao>
+          </div>
+        )}
       </div>
 
       <SeletorContaCartao
@@ -271,20 +281,13 @@ export function CriarEditarCartao({ cartao, contas, onVoltar, onSalvou }: Props)
         onSelecionar={(chave) => { setBandeira(chave); setSheet(null); }}
       />
 
-      {/* Apagar (só em edição) — §4.10 */}
-      {editando && (
-        <div style={{ padding: 'var(--space-md) var(--space-xl)' }}>
-          <Botao hierarquia="secondary" onClick={apagar} disabled={salvando} style={{ color: 'var(--value-saida)' }}>
-            Apagar cartão
+      {/* Footer fixo: Salvar — sempre acessível na base, cobre o Apagar. */}
+      <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 10, borderTop: '1px solid var(--border-default)', background: 'var(--bg-surface)' }}>
+        <div style={{ maxWidth: 480, margin: '0 auto', padding: 'var(--space-md) var(--space-xl) calc(var(--space-xl) + env(safe-area-inset-bottom))' }}>
+          <Botao onClick={salvar} disabled={!podeSalvar}>
+            {salvando ? 'Salvando…' : 'Salvar cartão'}
           </Botao>
         </div>
-      )}
-
-      {/* Footer fixo: Salvar */}
-      <div style={{ borderTop: '1px solid var(--border-default)', background: 'var(--bg-surface)', padding: 'var(--space-md) var(--space-xl) calc(var(--space-xl) + env(safe-area-inset-bottom))' }}>
-        <Botao onClick={salvar} disabled={!podeSalvar}>
-          {salvando ? 'Salvando…' : 'Salvar cartão'}
-        </Botao>
       </div>
     </div>
   );
