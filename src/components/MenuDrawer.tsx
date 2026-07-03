@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { usePresenca, EASE_OVERLAY } from '../lib/usePresenca';
+import { useScrollLock } from '../lib/useScrollLock';
 import {
   IconeHome,
   IconeWallet,
@@ -58,16 +59,16 @@ export function MenuDrawer({
 }: Props) {
   const { montado, visivel, duracao } = usePresenca(aberto);
 
-  // Esc fecha; trava o scroll do fundo enquanto montado.
+  // Trava a rolagem do fundo enquanto montado (helper com contador).
+  useScrollLock(montado);
+
+  // Esc fecha.
   useEffect(() => {
     if (!montado) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onFechar(); };
     document.addEventListener('keydown', onKey);
-    const overflowAnterior = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = overflowAnterior;
     };
   }, [montado, onFechar]);
 
