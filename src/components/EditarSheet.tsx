@@ -16,6 +16,7 @@ import {
 } from './_camposLancamento';
 import { IconeClose } from '../icons';
 import { formatarBR } from '../lib/formato';
+import { parteData } from '../lib/recorrencia';
 import { supabase, comTimeout } from '../lib/supabase';
 import type { Conta, Cartao, Lancamento } from '../types/db';
 import type { OcorrenciaLancamento } from '../lib/recorrencia';
@@ -148,42 +149,71 @@ export function EditarSheet({
           .eq('id', regra.id));
         if (error) throw error;
       } else if (escopo === 'so_esta') {
-        // Override desta ocorrência (a regra continua intacta).
-        const res = await comTimeout(supabase
-          .from('excecoes_serie')
-          .upsert(
-            {
-              serie_id: ocorrencia.serieId,
-              data_alvo: ocorrencia.data,
-              excluida: false,
-              valor,
-              descricao: descricao.trim(),
-              nota: nota.trim() || null,
-            },
-            { onConflict: 'serie_id,data_alvo' },
-          )
-          .select());
-        console.error('[EditarSheet] UPSERT so_esta →', JSON.stringify(res, null, 2));
-        if (res.error) throw res.error;
-      } else if (escopo === 'esta_e_futuras') {
-        await executarDivisao('salvar');
-      } else if (escopo === 'todas') {
-        // Edita a regra inteira; exceções já gravadas permanecem (§4.3).
-        const res = await comTimeout(supabase
-          .from('lancamentos')
-          .update({
+        if (data !== ocorrencia.data) {
+          // Data mudou → esta ocorrência "descola" da série e vira um
+          // lançamento novo, independente (pode pular de mês/ano). Marca a
+          // ocorrência original como excluída e cria um avista solto.
+          const ex = await comTimeout(supabase
+            .from('excecoes_serie')
+            .upsert(
+              {
+                serie_id: ocorrencia.serieId,
+                data_alvo: ocorrencia.data,
+                excluida: true,
+                valor: null,
+                descricao: null,
+                nota: null,
+              },
+              { onConflict: 'serie_id,data_alvo' },
+            ));
+          if (ex.error) throw ex.error;
+
+          const novo = await comTimeout(supabase.from('lancamentos').insert({
+            tipo: regra.tipo,
             valor,
             descricao: descricao.trim(),
             nota: nota.trim() || null,
-          })
-          .eq('id', regra.id)
-          .select());
-        console.error('[EditarSheet] UPDATE todas →', JSON.stringify(res, null, 2));
-        if (res.error) throw res.error;
+            data,
+            conta_id: regra.conta_id,
+            cartao_id: regra.cartao_id,
+            repeticao: 'avista',
+            parcelas: null,
+            recorrencia_fim: null,
+            assinatura: false,
+            serie_id: null,
+          }));
+          if (novo.error) throw novo.error;
+        } else {
+          // Só valor/descrição/nota mudaram → override in-place na série.
+          const { error } = await comTimeout(supabase
+            .from('excecoes_serie')
+            .upsert(
+              {
+                serie_id: ocorrencia.serieId,
+                data_alvo: ocorrencia.data,
+                excluida: false,
+                valor,
+                descricao: descricao.trim(),
+                nota: nota.trim() || null,
+              },
+              { onConflict: 'serie_id,data_alvo' },
+            ));
+          if (error) throw error;
+        }
+      } else if (escopo === 'esta_e_futuras') {
+        // Divisão na 1ª ocorrência não tem passado a preservar → equivale a
+        // "todas" (encerrar a fase antiga em 0 violaria a constraint de
+        // recorrencia_fim >= 1). Edita a regra inteira, incluindo a data.
+        if (ocorrencia.indice - 1 === 0) {
+          await editarRegraInteira();
+        } else {
+          await executarDivisao('salvar');
+        }
+      } else if (escopo === 'todas') {
+        await editarRegraInteira();
       }
       finalizar();
     } catch (e) {
-      console.error('[EditarSheet] erro ao salvar:', JSON.stringify(e, null, 2), e);
       setErro(e instanceof Error ? e.message : 'Erro ao salvar.');
       setSalvando(false);
     }
@@ -223,6 +253,27 @@ export function EditarSheet({
 
   /** Executa "esta e as futuras": encerra a regra antiga, cria a nova fase
    *  (no salvar) com o mesmo serie_id, e limpa exceções a partir do corte. */
+  /** Edita a regra inteira (escopo "todas" ou "esta e futuras" na 1ª ocorrência).
+   *  Inclui a data: mantém ano/mês de início da regra e troca o DIA pelo da nova
+   *  data escolhida — muda o dia-âncora de toda a série (§4.1; o motor faz o
+   *  clamp nos meses curtos). Exceções manuais já gravadas permanecem (§4.3). */
+  async function editarRegraInteira() {
+    if (!regra) return;
+    const [anoRegra, mesRegra] = parteData(regra.data);
+    const diaNovo = parteData(data)[2];
+    const dataRegra = `${String(anoRegra).padStart(4, '0')}-${String(mesRegra).padStart(2, '0')}-${String(diaNovo).padStart(2, '0')}`;
+    const { error } = await comTimeout(supabase
+      .from('lancamentos')
+      .update({
+        valor,
+        descricao: descricao.trim(),
+        nota: nota.trim() || null,
+        data: dataRegra,
+      })
+      .eq('id', regra.id));
+    if (error) throw error;
+  }
+
   async function executarDivisao(acao: 'salvar' | 'excluir') {
     if (!ocorrencia || !regra) return;
     const corteIndice = ocorrencia.indice - 1; // indice é 1-based
@@ -239,8 +290,7 @@ export function EditarSheet({
       plano.encerrar.campo === 'parcelas'
         ? { parcelas: plano.encerrar.manter }
         : { recorrencia_fim: plano.encerrar.manter };
-    const e1 = await comTimeout(supabase.from('lancamentos').update(upd).eq('id', regra.id).select());
-    console.error('[EditarSheet] divisao passo1 encerrar →', JSON.stringify(e1, null, 2));
+    const e1 = await comTimeout(supabase.from('lancamentos').update(upd).eq('id', regra.id));
     if (e1.error) throw e1.error;
 
     // 2. limpa exceções que agora pertenceriam à nova fase (data_alvo >= corte)
@@ -248,19 +298,22 @@ export function EditarSheet({
       .from('excecoes_serie')
       .delete()
       .eq('serie_id', ocorrencia.serieId)
-      .gte('data_alvo', plano.removerExcecoesAPartirDe)
-      .select());
-    console.error('[EditarSheet] divisao passo2 limpar excecoes →', JSON.stringify(e2, null, 2));
+      .gte('data_alvo', plano.removerExcecoesAPartirDe));
     if (e2.error) throw e2.error;
 
-    // 3. cria a nova regra (só no salvar), mesmo serie_id (mesma etiqueta)
+    // 3. cria a nova regra (só no salvar), mesmo serie_id (mesma etiqueta).
+    // A data da nova fase mantém o mês do corte, mas adota o DIA editado como
+    // novo dia-âncora da fase futura (§4.1).
     if (plano.novaRegra) {
+      const [anoCorte, mesCorte] = parteData(plano.novaRegra.data);
+      const diaNovo = parteData(data)[2];
+      const dataNovaFase = `${String(anoCorte).padStart(4, '0')}-${String(mesCorte).padStart(2, '0')}-${String(diaNovo).padStart(2, '0')}`;
       const e3 = await comTimeout(supabase.from('lancamentos').insert({
         tipo: regra.tipo,
         valor: plano.novaRegra.valor,
         descricao: plano.novaRegra.descricao,
         nota: plano.novaRegra.nota,
-        data: plano.novaRegra.data,
+        data: dataNovaFase,
         conta_id: regra.conta_id,
         cartao_id: regra.cartao_id,
         repeticao: 'recorrente',
@@ -268,8 +321,7 @@ export function EditarSheet({
         recorrencia_fim: plano.novaRegra.recorrencia_fim,
         assinatura: regra.assinatura,
         serie_id: ocorrencia.serieId,
-      }).select());
-      console.error('[EditarSheet] divisao passo3 nova regra →', JSON.stringify(e3, null, 2));
+      }));
       if (e3.error) throw e3.error;
     }
   }
