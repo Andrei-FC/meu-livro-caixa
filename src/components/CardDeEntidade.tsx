@@ -1,6 +1,6 @@
 import { BarraDePrevisao } from './BarraDePrevisao';
 import { formatarBR } from '../lib/formato';
-import { IconeImage, LogoBanco, LogoBandeira } from '../icons';
+import { IconeImage, LogoBanco, LogoBandeira, ICONES_POUPANCA } from '../icons';
 
 /**
  * Card de entidade — §5.3, §4.9, Figma set 2018:36.
@@ -20,7 +20,7 @@ type ContaProps = Base & {
   entradas: number;
   saidas: number;
 };
-type PoupancaProps = Base & { tipo: 'poupanca' };
+type PoupancaProps = Base & { tipo: 'poupanca'; /** Chave do ícone de poupança (§4.9). */ icone?: string | null };
 type CofreProps = Base & { tipo: 'cofre' };
 type CartaoProps = Base & {
   tipo: 'cartao';
@@ -74,7 +74,9 @@ function ComTesteira(props: ContaProps | PoupancaProps | CofreProps) {
           color: testeiraFg,
         }}
       >
-        <SlotLogo banco={props.tipo === 'cofre' ? null : props.banco} />
+        {props.tipo === 'poupanca'
+          ? <SlotIconePoupanca icone={props.icone} />
+          : <SlotLogo banco={props.tipo === 'cofre' ? null : props.banco} />}
         <span className="type-numeric">{nome}</span>
       </div>
 
@@ -148,6 +150,16 @@ function SlotLogo({ banco }: { banco?: string | null }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, background: 'rgba(255,255,255,0.18)' }}>
       {banco ? <LogoBanco chave={banco} tamanho={20} /> : <IconeImage tamanho={18} />}
+    </span>
+  );
+}
+/** Slot do ícone temático de poupança (§4.9). Resolve da biblioteca própria;
+ *  sem ícone cai no placeholder, igual ao SlotLogo. */
+function SlotIconePoupanca({ icone }: { icone?: string | null }) {
+  const Icone = icone ? ICONES_POUPANCA[icone] : null;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, background: 'rgba(255,255,255,0.18)' }}>
+      {Icone ? <Icone tamanho={18} /> : <IconeImage tamanho={18} />}
     </span>
   );
 }

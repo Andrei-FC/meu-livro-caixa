@@ -21,3 +21,11 @@ export function formatarBR(valor: number, opts: FormatoOpts = {}): string {
   const prefixo = opts.prefixo ? 'R$ ' : '';
   return `${sinal}${prefixo}${abs}`;
 }
+
+const MESES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+/** Data ISO (YYYY-MM-DD) → "23 jun 2026". Fonte única para linhas de histórico. */
+export function dataCurta(iso: string): string {
+  const [ano, mes, dia] = iso.split('-').map(Number);
+  return `${dia} ${MESES_CURTO[(mes ?? 1) - 1]} ${ano}`;
+}

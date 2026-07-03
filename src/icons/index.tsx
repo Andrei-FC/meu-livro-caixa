@@ -11,6 +11,8 @@
 // Logos de banco e bandeira (famílias separadas, bibliotecas fixas §4.9).
 export * from './bancos';
 export * from './bandeiras';
+// Ícones temáticos de poupança (§4.9).
+export * from './poupancas';
 
 type IconeProps = {
   /** Lado do quadrado em px. Default = tamanho nativo do ícone no Figma. */

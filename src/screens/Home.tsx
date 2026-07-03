@@ -11,6 +11,8 @@ import {
   diaPagamentoNoMes,
   saldoAcumuladoPorConta,
   fluxoDoMes,
+  saldoPorPoupanca,
+  movimentacoesDaPoupanca,
   parteData,
   type OcorrenciaLancamento,
 } from '../lib/recorrencia';
@@ -33,6 +35,9 @@ import {
   Relatorio,
 } from '../components';
 import { GerenciarContas } from './GerenciarContas';
+import { Cofre } from './Cofre';
+import { PoupancaDrilldown } from './PoupancaDrilldown';
+import { CriarEditarPoupanca } from './CriarEditarPoupanca';
 import { categoriasDoMes, maiorGastoDoMes, recorteAssinaturas } from '../lib/relatorio';
 import { GerenciarCartoes } from './GerenciarCartoes';
 import { CriarEditarConta } from './CriarEditarConta';
@@ -80,12 +85,18 @@ export function Home() {
   const [sheetAberto, setSheetAberto] = useState(false);
   const [menuAberto, setMenuAberto] = useState(false);
   const [emEdicao, setEmEdicao] = useState<OcorrenciaLancamento | null>(null);
+  // Sheet de depósito/retirada da poupança (§5.4): reusa o LancarSheet em modo
+  // transferência fixa. null = fechado.
+  const [transfFixa, setTransfFixa] = useState<{ poupanca: Conta; direcao: 'deposito' | 'retirada' } | null>(null);
 
   // Roteamento por estado para as PÁGINAS PRÓPRIAS (§5.8) — telas cheias fora
   // das abas da Home (gerenciar/criar/editar conta e cartão). null = Home.
   type Pagina =
     | { tela: 'gerenciar-contas' }
     | { tela: 'gerenciar-cartoes' }
+    | { tela: 'cofre' }
+    | { tela: 'poupanca'; poupanca: Conta }
+    | { tela: 'poupanca-edit'; poupanca: Conta | null }
     | { tela: 'conta'; conta: Conta | null }
     | { tela: 'cartao'; cartao: Cartao | null }
     | { tela: 'drill-cartao'; cartao: Cartao };
@@ -275,6 +286,12 @@ export function Home() {
     ),
     [lancamentos, transferencias, contas, cartoes, hoje, indiceExcecoes],
   );
+  // Saldo guardado por poupança (§5.4) — cards do Cofre e hero do drill-down.
+  const saldosPorPoupanca = useMemo(
+    () => saldoPorPoupanca(transferencias, contas, hoje),
+    [transferencias, contas, hoje],
+  );
+  const poupancas = useMemo(() => contas.filter((c) => c.tipo === 'poupanca'), [contas]);
   // Saldo acumulado por conta no MÊS EXIBIDO — cards da aba Contas da Home
   // (acompanha a navegação de mês).
   const saldosPorContaMesExibido = useMemo(
@@ -322,7 +339,8 @@ export function Home() {
     }
     if (destino === 'contas') { setPagina({ tela: 'gerenciar-contas' }); return; }
     if (destino === 'cartoes') { setPagina({ tela: 'gerenciar-cartoes' }); return; }
-    // TODO: rotear cofre/categorias/configurações (§5.8)
+    if (destino === 'cofre') { setPagina({ tela: 'cofre' }); return; }
+    // TODO: rotear categorias/configurações (§5.8)
   }
 
   // Renderiza as páginas próprias por cima da Home (§5.8). Recarrega os dados ao
@@ -379,6 +397,63 @@ export function Home() {
         mesInicial={mes}
         onVoltar={() => setPagina(null)}
         onEditar={(o) => { setPagina(null); setEmEdicao(o); }}
+      />
+    );
+  }
+
+  if (pagina?.tela === 'cofre') {
+    return (
+      <Cofre
+        poupancas={poupancas}
+        saldos={saldosPorPoupanca}
+        onVoltar={() => setPagina(null)}
+        onCriar={() => setPagina({ tela: 'poupanca-edit', poupanca: null })}
+        onAbrir={(p) => setPagina({ tela: 'poupanca', poupanca: p })}
+      />
+    );
+  }
+  if (pagina?.tela === 'poupanca') {
+    const p = pagina.poupanca;
+    return (
+      <>
+        <PoupancaDrilldown
+          poupanca={p}
+          saldo={saldosPorPoupanca.get(p.id) ?? 0}
+          movimentacoes={movimentacoesDaPoupanca(transferencias, p.id, hoje)}
+          onVoltar={() => setPagina({ tela: 'cofre' })}
+          onDepositar={() => setTransfFixa({ poupanca: p, direcao: 'deposito' })}
+          onRetirar={() => setTransfFixa({ poupanca: p, direcao: 'retirada' })}
+          onEditar={() => setPagina({ tela: 'poupanca-edit', poupanca: p })}
+        />
+        {/* Sheet de depósito/retirada — LancarSheet em transferência fixa (§5.4) */}
+        <LancarSheet
+          aberto={transfFixa !== null}
+          contas={contas}
+          cartoes={cartoes}
+          historicoDescricoes={historicoDescricoes}
+          onFechar={() => setTransfFixa(null)}
+          onSalvou={() => { carregar(); }}
+          transferenciaFixa={
+            transfFixa
+              ? {
+                  poupanca: transfFixa.poupanca,
+                  direcao: transfFixa.direcao,
+                  titulo: transfFixa.direcao === 'deposito' ? 'Depositar' : 'Retirar',
+                }
+              : undefined
+          }
+        />
+      </>
+    );
+  }
+  if (pagina?.tela === 'poupanca-edit') {
+    return (
+      <CriarEditarPoupanca
+        poupanca={pagina.poupanca}
+        onVoltar={() =>
+          setPagina(pagina.poupanca ? { tela: 'poupanca', poupanca: pagina.poupanca } : { tela: 'cofre' })
+        }
+        onSalvou={() => { carregar(); }}
       />
     );
   }

@@ -770,3 +770,90 @@ export function fluxoDoMes(
   }
   return pontos;
 }
+
+/**
+ * Saldo de cada poupança (§5.4) — quanto está guardado em cada `conta` de
+ * tipo poupança. É patrimônio real acumulado: soma dos DEPÓSITOS (transferência
+ * que chega na poupança) menos as RETIRADAS (que saem dela), sobre todas as
+ * ocorrências desde a âncora até o mês corrente (inclusive). Transferência
+ * poupança↔poupança move entre duas poupanças (debita uma, credita outra).
+ *
+ * Não projeta futuro: o "guardado" é o que já foi movido de fato. Devolve um
+ * mapa poupanca_id → saldo, com toda poupança presente (mesmo zerada). O total
+ * do Cofre é a soma dos valores deste mapa.
+ */
+export function saldoPorPoupanca(
+  transferencias: Transferencia[],
+  contas: Conta[],
+  hoje: Date,
+): Map<string, number> {
+  const tipoConta = new Map(contas.map((c) => [c.id, c.tipo]));
+  const acc = new Map<string, number>();
+  for (const c of contas) if (c.tipo === 'poupanca') acc.set(c.id, 0);
+  if (acc.size === 0) return acc;
+
+  const ancora = acharAncora([], transferencias);
+  if (!ancora) return acc;
+
+  const inicio = mesAbs(ancora.ano, ancora.mes);
+  const fim = mesAbs(hoje.getFullYear(), hoje.getMonth()); // até o mês corrente
+  for (let abs = inicio; abs <= fim; abs++) {
+    const ano = Math.floor(abs / 12);
+    const mes = abs % 12;
+    for (const o of transferenciasNoMes(transferencias, ano, mes, hoje)) {
+      const destinoPoup = tipoConta.get(o.para_conta_id) === 'poupanca';
+      const origemPoup = tipoConta.get(o.de_conta_id) === 'poupanca';
+      if (destinoPoup) acc.set(o.para_conta_id, (acc.get(o.para_conta_id) ?? 0) + o.valor);
+      if (origemPoup) acc.set(o.de_conta_id, (acc.get(o.de_conta_id) ?? 0) - o.valor);
+    }
+  }
+  return acc;
+}
+
+/**
+ * Movimentações de uma poupança (§5.4, drill-down) — histórico de depósitos e
+ * retiradas, mais recente primeiro. Materializa as ocorrências de transferência
+ * que tocam esta poupança, da âncora até o mês corrente (não projeta futuro; o
+ * histórico é fato). Cada item traz o sinal (+depósito / −retirada) e o rótulo
+ * (a outra ponta ou a descrição). Poupança↔poupança conta em ambas.
+ */
+export interface MovimentacaoPoupanca {
+  id: string;
+  data: string;
+  /** Valor com sinal: positivo = entrou na poupança; negativo = saiu. */
+  delta: number;
+  tipo: 'deposito' | 'retirada';
+  descricao: string | null;
+}
+
+export function movimentacoesDaPoupanca(
+  transferencias: Transferencia[],
+  poupancaId: string,
+  hoje: Date,
+): MovimentacaoPoupanca[] {
+  const ancora = acharAncora([], transferencias);
+  if (!ancora) return [];
+
+  const inicio = mesAbs(ancora.ano, ancora.mes);
+  const fim = mesAbs(hoje.getFullYear(), hoje.getMonth());
+  const out: MovimentacaoPoupanca[] = [];
+  for (let abs = inicio; abs <= fim; abs++) {
+    const ano = Math.floor(abs / 12);
+    const mes = abs % 12;
+    for (const o of transferenciasNoMes(transferencias, ano, mes, hoje)) {
+      const entra = o.para_conta_id === poupancaId;
+      const sai = o.de_conta_id === poupancaId;
+      if (!entra && !sai) continue;
+      out.push({
+        id: o.id,
+        data: o.data,
+        delta: entra ? o.valor : -o.valor,
+        tipo: entra ? 'deposito' : 'retirada',
+        descricao: o.descricao,
+      });
+    }
+  }
+  // Mais recente primeiro.
+  out.sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0));
+  return out;
+}

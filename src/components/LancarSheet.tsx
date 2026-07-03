@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BottomSheet } from './BottomSheet';
 import { Botao } from './Botao';
 import {
@@ -44,6 +44,18 @@ type Props = {
   onFechar: () => void;
   /** Chamado após gravar com sucesso — a Home recarrega os dados. */
   onSalvou: () => void;
+  /**
+   * Modo transferência FIXO (§5.4): usado por Depositar/Retirar da poupança.
+   * Trava o sheet em transferência (sem toggle Saída/Entrada), fixa a poupança
+   * num dos lados e ajusta o título. Ausente = sheet normal (fluxo sagrado).
+   */
+  transferenciaFixa?: {
+    /** A poupança fixada. */
+    poupanca: Conta;
+    /** 'deposito' fixa a poupança no DESTINO; 'retirada' na ORIGEM. */
+    direcao: 'deposito' | 'retirada';
+    titulo: string;
+  };
 };
 
 /** Converte o valor digitado (centavos como string) em número em reais. */
@@ -58,9 +70,10 @@ export function LancarSheet({
   historicoDescricoes,
   onFechar,
   onSalvou,
+  transferenciaFixa,
 }: Props) {
   // ── Estado do formulário ──
-  const [modo, setModo] = useState<Modo>('saida');
+  const [modo, setModo] = useState<Modo>(transferenciaFixa ? 'transferencia' : 'saida');
   const [digitos, setDigitos] = useState(''); // valor em centavos, só dígitos
   const [descricao, setDescricao] = useState('');
   const [data, setData] = useState(() => hojeISO());
@@ -103,7 +116,7 @@ export function LancarSheet({
   }, [descricao, historicoDescricoes]);
 
   function resetar() {
-    setModo('saida');
+    setModo(transferenciaFixa ? 'transferencia' : 'saida');
     setDigitos('');
     setDescricao('');
     setData(hojeISO());
@@ -115,10 +128,24 @@ export function LancarSheet({
     setNota('');
     setContaSel(null);
     setCartaoSel(null);
-    setOrigemSel(null);
-    setDestinoSel(null);
+    // Em transferência fixa, fixa o lado da poupança; o outro lado o usuário escolhe.
+    if (transferenciaFixa) {
+      const { poupanca, direcao } = transferenciaFixa;
+      setOrigemSel(direcao === 'retirada' ? poupanca : null);
+      setDestinoSel(direcao === 'deposito' ? poupanca : null);
+    } else {
+      setOrigemSel(null);
+      setDestinoSel(null);
+    }
     setErro(null);
   }
+
+  // Ao abrir, aplica o estado inicial (importante no modo fixo, que precisa
+  // fixar o lado da poupança sempre que o sheet reabre).
+  useEffect(() => {
+    if (aberto) resetar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aberto]);
 
   function fechar() {
     resetar();
@@ -193,12 +220,12 @@ export function LancarSheet({
 
   return (
     <>
-      <BottomSheet aberto={aberto} onFechar={fechar} aria-label="Novo lançamento">
+      <BottomSheet aberto={aberto} onFechar={fechar} aria-label={transferenciaFixa ? transferenciaFixa.titulo : 'Novo lançamento'}>
         {/* ── Header: spacer · título centralizado · ✕ (Figma 3 colunas) ── */}
         <div style={{ display: 'flex', alignItems: 'center', padding: '4px 16px 8px 20px' }}>
           <span style={{ width: 22, flex: '0 0 auto' }} aria-hidden />
           <span className="type-title" style={{ color: 'var(--text-primary)', flex: 1, textAlign: 'center' }}>
-            Novo lançamento
+            {transferenciaFixa ? transferenciaFixa.titulo : 'Novo lançamento'}
           </span>
           <button
             type="button"
@@ -243,7 +270,9 @@ export function LancarSheet({
         {/* ── Body rolável ── */}
         <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 18, padding: '4px 20px 20px' }}>
           {/* Toggle ternário */}
-          <Toggle modo={modo} onMudar={(m) => { setModo(m); if (m === 'transferencia') setRepete(repete === 'parcelar' ? 'avista' : repete); }} />
+          {!transferenciaFixa && (
+            <Toggle modo={modo} onMudar={(m) => { setModo(m); if (m === 'transferencia') setRepete(repete === 'parcelar' ? 'avista' : repete); }} />
+          )}
 
           {/* Descrição (gasto/receita e, opcional, transferência) */}
           <CampoDescricao
