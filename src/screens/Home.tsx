@@ -13,8 +13,10 @@ import {
   fluxoDoMes,
   saldoPorPoupanca,
   movimentacoesDaPoupanca,
+  transferenciasNoMes,
   parteData,
   type OcorrenciaLancamento,
+  type OcorrenciaTransferencia,
 } from '../lib/recorrencia';
 import {
   Tabs,
@@ -25,6 +27,7 @@ import {
   LinhaDeLancamento,
   LinhaDeFatura,
   type FaseFatura,
+  LinhaDeTransferencia,
   CardDeEntidade,
   FAB,
   Header,
@@ -195,6 +198,13 @@ export function Home() {
   const ocorrenciasLista = useMemo(
     () => ocorrenciasDoMes.filter((o) => o.cartao_id == null),
     [ocorrenciasDoMes],
+  );
+
+  // Transferências do mês (§4.5) — entram na lista do fluxo (correntes) para
+  // deixar rastro visível de todo movimento (o saldo nunca muda sem uma linha).
+  const transferenciasLista = useMemo(
+    () => transferenciasNoMes(transferencias, ano, mes, hoje),
+    [transferencias, ano, mes, hoje],
   );
 
   // Fatura que VENCE no mês exibido, por cartão — o que pesa no saldo (§4.4).
@@ -548,6 +558,7 @@ export function Home() {
                 ano={ano}
                 mes={mes}
                 ocorrencias={ocorrenciasLista}
+                transferencias={transferenciasLista}
                 cartoes={cartoes}
                 contaPorId={contaPorId}
                 faturaDoMes={faturaDoMes}
@@ -649,12 +660,14 @@ export function Home() {
 
 type ItemDia =
   | { kind: 'lancamento'; o: OcorrenciaLancamento }
-  | { kind: 'fatura'; k: Cartao };
+  | { kind: 'fatura'; k: Cartao }
+  | { kind: 'transferencia'; t: OcorrenciaTransferencia };
 
 function Lancamentos(props: {
   ano: number;
   mes: number;
   ocorrencias: OcorrenciaLancamento[];
+  transferencias: OcorrenciaTransferencia[];
   cartoes: Cartao[];
   contaPorId: Map<string, Conta>;
   /** Fatura que VENCE no mês exibido, por cartão (o que pesa no saldo, §4.4). */
@@ -666,18 +679,32 @@ function Lancamentos(props: {
   onAbrirCartao: (k: Cartao) => void;
   saldoInicial: number;
 }) {
-  const { ano, mes, ocorrencias, cartoes, contaPorId, faturaDoMes, realizadoPorCartao, fase, onEditar, onAbrirCartao, saldoInicial } = props;
+  const { ano, mes, ocorrencias, transferencias, cartoes, contaPorId, faturaDoMes, realizadoPorCartao, fase, onEditar, onAbrirCartao, saldoInicial } = props;
 
   // Agrupa por dia. A data de cada ocorrência já vem resolvida pelo motor
   // (§4.1: âncora no dia + clamp). A fatura de cada cartão entra no DIA DO
   // PAGAMENTO (fluxo de caixa, §4.8) e só nos meses em que uma fatura vence
   // (faturaDoMes > 0). O valor que pesa é a fatura (max previsão/realizado, ou
   // realizado se fechada) — fonte única do motor.
+  // Classifica uma transferência pelo tipo das contas (§4.5): destino poupança
+  // = depósito (debita); origem poupança = retirada (credita); senão neutra.
+  const classificar = (t: OcorrenciaTransferencia): { variante: 'neutra' | 'deposito' | 'retirada'; delta: number } => {
+    const destinoPoup = contaPorId.get(t.para_conta_id)?.tipo === 'poupanca';
+    const origemPoup = contaPorId.get(t.de_conta_id)?.tipo === 'poupanca';
+    if (destinoPoup && !origemPoup) return { variante: 'deposito', delta: -t.valor };
+    if (origemPoup && !destinoPoup) return { variante: 'retirada', delta: t.valor };
+    return { variante: 'neutra', delta: 0 };
+  };
+
   const grupos = useMemo(() => {
     const porDia = new Map<number, ItemDia[]>();
     for (const o of ocorrencias) {
       const [, , dia] = parteData(o.data);
       (porDia.get(dia) ?? porDia.set(dia, []).get(dia)!).push({ kind: 'lancamento', o });
+    }
+    for (const t of transferencias) {
+      const [, , dia] = parteData(t.data);
+      (porDia.get(dia) ?? porDia.set(dia, []).get(dia)!).push({ kind: 'transferencia', t });
     }
     for (const k of cartoes) {
       const peso = faturaDoMes.get(k.id) ?? 0;
@@ -693,11 +720,12 @@ function Lancamentos(props: {
         const itens = porDia.get(dia)!;
         for (const it of itens) {
           if (it.kind === 'lancamento') acc += it.o.tipo === 'entrada' ? it.o.valor : -it.o.valor;
+          else if (it.kind === 'transferencia') acc += classificar(it.t).delta;
           else acc -= faturaDoMes.get(it.k.id) ?? 0; // fatura sai da conta no pagamento
         }
         return { dia, itens, saldoAcumulado: acc };
       });
-  }, [ocorrencias, cartoes, faturaDoMes, saldoInicial, ano, mes]);
+  }, [ocorrencias, transferencias, cartoes, faturaDoMes, saldoInicial, ano, mes, contaPorId]);
 
   if (grupos.length === 0) {
     return (
@@ -734,6 +762,15 @@ function Lancamentos(props: {
                     conta={(() => { const c = contaPorId.get(it.o.conta_id); return c ? { nome: c.nome, tema: c.tema } : undefined; })()}
                     parcela={it.o.total != null ? { indice: it.o.indice, total: it.o.total } : undefined}
                     onEditar={() => onEditar(it.o)}
+                  />
+                ) : it.kind === 'transferencia' ? (
+                  <LinhaDeTransferencia
+                    key={it.t.id}
+                    variante={classificar(it.t).variante}
+                    valor={it.t.valor}
+                    origem={(() => { const c = contaPorId.get(it.t.de_conta_id); return { nome: c?.nome ?? '—', tema: c?.tema }; })()}
+                    destino={(() => { const c = contaPorId.get(it.t.para_conta_id); return { nome: c?.nome ?? '—', tema: c?.tema }; })()}
+                    onEditar={() => { /* TODO: editar transferência (§5.7) */ }}
                   />
                 ) : (
                   <LinhaDeFatura

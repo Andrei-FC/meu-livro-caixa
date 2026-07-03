@@ -191,3 +191,32 @@ export function IconeBan({ tamanho = 20 }: IconeProps) {
     </svg>
   );
 }
+
+/** Setas de transferência (§5.1) — lead icon da Linha de transferência.
+ *  switch-horizontal = neutra; arrow-sm-down = depósito; arrow-sm-up = retirada. */
+export function IconeSwapHorizontal({ tamanho = 18 }: IconeProps) {
+  return (
+    <svg width={tamanho} height={tamanho} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path fillRule="evenodd" clipRule="evenodd" d="M13.7197 1.71967C14.0126 1.42678 14.4874 1.42678 14.7803 1.71967L20.0303 6.96967C20.3232 7.26256 20.3232 7.73744 20.0303 8.03033L14.7803 13.2803C14.4874 13.5732 14.0126 13.5732 13.7197 13.2803C13.4268 12.9874 13.4268 12.5126 13.7197 12.2197L18.4393 7.5L13.7197 2.78033C13.4268 2.48744 13.4268 2.01256 13.7197 1.71967Z" fill="currentColor" />
+      <path fillRule="evenodd" clipRule="evenodd" d="M3.75 7.5C3.75 7.08579 4.08579 6.75 4.5 6.75H18.697C19.1112 6.75 19.447 7.08579 19.447 7.5C19.447 7.91421 19.1112 8.25 18.697 8.25H4.5C4.08579 8.25 3.75 7.91421 3.75 7.5Z" fill="currentColor" />
+      <path fillRule="evenodd" clipRule="evenodd" d="M10.2803 10.7197C10.5732 11.0126 10.5732 11.4874 10.2803 11.7803L5.56066 16.5L10.2803 21.2197C10.5732 21.5126 10.5732 21.9874 10.2803 22.2803C9.98744 22.5732 9.51256 22.5732 9.21967 22.2803L3.96967 17.0303C3.67678 16.7374 3.67678 16.2626 3.96967 15.9697L9.21967 10.7197C9.51256 10.4268 9.98744 10.4268 10.2803 10.7197Z" fill="currentColor" />
+      <path fillRule="evenodd" clipRule="evenodd" d="M4.59375 16.5C4.59375 16.0858 4.92954 15.75 5.34375 15.75H19.5C19.9142 15.75 20.25 16.0858 20.25 16.5C20.25 16.9142 19.9142 17.25 19.5 17.25H5.34375C4.92954 17.25 4.59375 16.9142 4.59375 16.5Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function IconeArrowSmDown({ tamanho = 18 }: IconeProps) {
+  return (
+    <svg width={tamanho} height={tamanho} viewBox="0 0 20 20" fill="none" aria-hidden>
+      <path fillRule="evenodd" clipRule="evenodd" d="M14.7071 10.2929C15.0976 10.6834 15.0976 11.3166 14.7071 11.7071L10.7071 15.7071C10.3166 16.0976 9.68342 16.0976 9.29289 15.7071L5.29289 11.7071C4.90237 11.3166 4.90237 10.6834 5.29289 10.2929C5.68342 9.90237 6.31658 9.90237 6.70711 10.2929L9 12.5858V5C9 4.44772 9.44772 4 10 4C10.5523 4 11 4.44772 11 5L11 12.5858L13.2929 10.2929C13.6834 9.90237 14.3166 9.90237 14.7071 10.2929Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function IconeArrowSmUp({ tamanho = 18 }: IconeProps) {
+  return (
+    <svg width={tamanho} height={tamanho} viewBox="0 0 20 20" fill="none" aria-hidden>
+      <path fillRule="evenodd" clipRule="evenodd" d="M5.29289 9.70711C4.90237 9.31658 4.90237 8.68342 5.29289 8.29289L9.29289 4.29289C9.68342 3.90237 10.3166 3.90237 10.7071 4.29289L14.7071 8.29289C15.0976 8.68342 15.0976 9.31658 14.7071 9.70711C14.3166 10.0976 13.6834 10.0976 13.2929 9.70711L11 7.41421L11 15C11 15.5523 10.5523 16 10 16C9.44772 16 9 15.5523 9 15L9 7.41421L6.70711 9.70711C6.31658 10.0976 5.68342 10.0976 5.29289 9.70711Z" fill="currentColor" />
+    </svg>
+  );
+}

@@ -15,6 +15,7 @@ export type { FaseBarra } from './BarraDePrevisao';
 export { LinhaDeLancamento } from './LinhaDeLancamento';
 export { LinhaDeFatura } from './LinhaDeFatura';
 export type { FaseFatura } from './LinhaDeFatura';
+export { LinhaDeTransferencia } from './LinhaDeTransferencia';
 export { CabecalhoDeDia } from './CabecalhoDeDia';
 export { SaldoDoDia } from './SaldoDoDia';
 export { CardDeResumo } from './CardDeResumo';
