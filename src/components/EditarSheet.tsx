@@ -16,7 +16,7 @@ import {
 } from './_camposLancamento';
 import { IconeClose } from '../icons';
 import { formatarBR } from '../lib/formato';
-import { parteData } from '../lib/recorrencia';
+import { parteData, mesDe } from '../lib/recorrencia';
 import { supabase, comTimeout } from '../lib/supabase';
 import type { Conta, Cartao, Lancamento } from '../types/db';
 import type { OcorrenciaLancamento } from '../lib/recorrencia';
@@ -158,13 +158,13 @@ export function EditarSheet({
             .upsert(
               {
                 serie_id: ocorrencia.serieId,
-                data_alvo: ocorrencia.data,
+                mes_alvo: mesDe(ocorrencia.data),
                 excluida: true,
                 valor: null,
                 descricao: null,
                 nota: null,
               },
-              { onConflict: 'serie_id,data_alvo' },
+              { onConflict: 'serie_id,mes_alvo' },
             ));
           if (ex.error) throw ex.error;
 
@@ -190,13 +190,13 @@ export function EditarSheet({
             .upsert(
               {
                 serie_id: ocorrencia.serieId,
-                data_alvo: ocorrencia.data,
+                mes_alvo: mesDe(ocorrencia.data),
                 excluida: false,
                 valor,
                 descricao: descricao.trim(),
                 nota: nota.trim() || null,
               },
-              { onConflict: 'serie_id,data_alvo' },
+              { onConflict: 'serie_id,mes_alvo' },
             ));
           if (error) throw error;
         }
@@ -231,8 +231,8 @@ export function EditarSheet({
         const { error } = await comTimeout(supabase
           .from('excecoes_serie')
           .upsert(
-            { serie_id: ocorrencia.serieId, data_alvo: ocorrencia.data, excluida: true },
-            { onConflict: 'serie_id,data_alvo' },
+            { serie_id: ocorrencia.serieId, mes_alvo: mesDe(ocorrencia.data), excluida: true },
+            { onConflict: 'serie_id,mes_alvo' },
           ));
         if (error) throw error;
       } else if (escopo === 'esta_e_futuras') {
@@ -293,12 +293,12 @@ export function EditarSheet({
     const e1 = await comTimeout(supabase.from('lancamentos').update(upd).eq('id', regra.id));
     if (e1.error) throw e1.error;
 
-    // 2. limpa exceções que agora pertenceriam à nova fase (data_alvo >= corte)
+    // 2. limpa exceções que agora pertenceriam à nova fase (mes_alvo >= mês de corte)
     const e2 = await comTimeout(supabase
       .from('excecoes_serie')
       .delete()
       .eq('serie_id', ocorrencia.serieId)
-      .gte('data_alvo', plano.removerExcecoesAPartirDe));
+      .gte('mes_alvo', plano.removerExcecoesAPartirDe));
     if (e2.error) throw e2.error;
 
     // 3. cria a nova regra (só no salvar), mesmo serie_id (mesma etiqueta).

@@ -61,7 +61,7 @@ export interface Transferencia {
 export interface ExcecaoSerie {
   id: string;
   serie_id: string;
-  data_alvo: string; // YYYY-MM-DD — a ocorrência específica (data resolvida)
+  mes_alvo: string; // YYYY-MM — o mês da ocorrência (a série tem 1 por mês; imune a mudança de dia-âncora)
   excluida: boolean; // true = "só esta" excluída; o motor pula a ocorrência
   valor: number | null; // override; null = herda da regra
   descricao: string | null; // override; null = herda

@@ -20,17 +20,25 @@ import type { Lancamento, Transferencia, ExcecaoSerie, Conta, Cartao } from '../
 export const HORIZONTE_MESES = 24;
 
 /**
- * Índice de exceções para consulta O(1) no motor: serie_id → (data_alvo → exceção).
- * Construído uma vez na Home e passado para a expansão.
+ * Índice de exceções para consulta O(1) no motor: serie_id → (mes_alvo → exceção).
+ * Chave = mês (YYYY-MM), não a data completa: a série tem no máximo uma
+ * ocorrência por mês, e chavear por mês torna a exceção imune a mudanças de
+ * dia-âncora (mudar o dia da regra não órfana as exceções). Construído uma vez
+ * na Home e passado para a expansão.
  */
 export type IndiceExcecoes = Map<string, Map<string, ExcecaoSerie>>;
+
+/** Mês (YYYY-MM) de uma data ISO YYYY-MM-DD. */
+export function mesDe(iso: string): string {
+  return iso.slice(0, 7);
+}
 
 export function indexarExcecoes(excecoes: ExcecaoSerie[]): IndiceExcecoes {
   const idx: IndiceExcecoes = new Map();
   for (const e of excecoes) {
-    let porData = idx.get(e.serie_id);
-    if (!porData) { porData = new Map(); idx.set(e.serie_id, porData); }
-    porData.set(e.data_alvo, e);
+    let porMes = idx.get(e.serie_id);
+    if (!porMes) { porMes = new Map(); idx.set(e.serie_id, porMes); }
+    porMes.set(e.mes_alvo, e);
   }
   return idx;
 }
@@ -152,7 +160,7 @@ export function lancamentosNoMes(
    *  overrides de valor/descrição aplicados). */
   function comExcecao(oc: OcorrenciaLancamento): OcorrenciaLancamento | null {
     if (!excecoes || !oc.serieId) return oc;
-    const e = excecoes.get(oc.serieId)?.get(oc.data);
+    const e = excecoes.get(oc.serieId)?.get(mesDe(oc.data));
     if (!e) return oc;
     if (e.excluida) return null;
     return {
@@ -310,7 +318,7 @@ export interface PlanoDivisao {
   encerrar: PlanoEncerrar;
   /** Presente só no "salvar"; ausente no "excluir" (cancelamento). */
   novaRegra?: PlanoNovaRegra;
-  /** Exceções a remover: as de data_alvo >= a data de corte (§ decisão). */
+  /** Exceções a remover: as de mes_alvo >= o mês de corte (§ decisão). */
   removerExcecoesAPartirDe: string;
 }
 
@@ -346,7 +354,7 @@ export function planejarDivisao(
     campo: regra.repeticao === 'parcelar' ? 'parcelas' : 'recorrencia_fim',
   };
 
-  const plano: PlanoDivisao = { encerrar, removerExcecoesAPartirDe: corteData };
+  const plano: PlanoDivisao = { encerrar, removerExcecoesAPartirDe: mesDe(corteData) };
 
   if (acao === 'salvar') {
     if (regra.repeticao !== 'recorrente') {
