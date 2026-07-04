@@ -789,6 +789,7 @@ function Lancamentos(props: {
                     valor={it.o.tipo === 'saida' ? -it.o.valor : it.o.valor}
                     conta={(() => { const c = contaPorId.get(it.o.conta_id); return c ? { nome: c.nome, tema: c.tema } : undefined; })()}
                     parcela={it.o.total != null ? { indice: it.o.indice, total: it.o.total } : undefined}
+                    recorrente={it.o.repeticao === 'recorrente'}
                     onEditar={() => onEditar(it.o)}
                   />
                 ) : it.kind === 'transferencia' ? (
@@ -798,6 +799,7 @@ function Lancamentos(props: {
                     valor={it.t.valor}
                     origem={(() => { const c = contaPorId.get(it.t.de_conta_id); return { nome: c?.nome ?? '—', tema: c?.tema }; })()}
                     destino={(() => { const c = contaPorId.get(it.t.para_conta_id); return { nome: c?.nome ?? '—', tema: c?.tema }; })()}
+                    recorrente={it.t.serieId != null}
                     onEditar={() => onApagarTransf(it.t)}
                   />
                 ) : (

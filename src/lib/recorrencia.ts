@@ -79,6 +79,8 @@ export interface OcorrenciaLancamento {
   origemId: string;
   serieId: string | null;
   tipo: Lancamento['tipo'];
+  /** Repetição da regra de origem — distingue parcela de recorrente (§5.7). */
+  repeticao: Lancamento['repeticao'];
   /** Valor já resolvido: total÷parcelas no parcelamento; o valor/mês no resto. */
   valor: number;
   descricao: string;
@@ -251,6 +253,7 @@ function mapLanc(
     origemId: r.id,
     serieId: r.serie_id,
     tipo: r.tipo,
+    repeticao: r.repeticao,
     valor,
     descricao: r.descricao,
     data,

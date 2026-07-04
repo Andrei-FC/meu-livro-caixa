@@ -1,5 +1,5 @@
 import { Valor } from './Valor';
-import { IconePencil, IconeChevronRight, IconeSwapHorizontal, IconeArrowSmDown, IconeArrowSmUp } from '../icons';
+import { IconePencil, IconeChevronRight, IconeSwapHorizontal, IconeArrowSmDown, IconeArrowSmUp, IconeCollection } from '../icons';
 
 /**
  * Linha de transferência — §5.1, §4.5, Figma set 2319:1867.
@@ -29,6 +29,8 @@ type Props = {
   valor: number;
   origem: Ponta;
   destino: Ponta;
+  /** Faz parte de uma transferência recorrente → ícone de coleção (§5.7). */
+  recorrente?: boolean;
   onEditar: () => void;
 };
 
@@ -44,7 +46,7 @@ function LeadIcone({ variante }: { variante: Variante }) {
   return <IconeSwapHorizontal tamanho={18} />;
 }
 
-export function LinhaDeTransferencia({ variante, valor, origem, destino, onEditar }: Props) {
+export function LinhaDeTransferencia({ variante, valor, origem, destino, recorrente, onEditar }: Props) {
   // Valor: neutra sem sinal (text/primary via Valor tipo 'neutro'); depósito
   // debita (saida, −); retirada credita (entrada, +). §4.5.
   const valorTipo = variante === 'deposito' ? 'saida' : variante === 'retirada' ? 'entrada' : 'neutro';
@@ -81,6 +83,11 @@ export function LinhaDeTransferencia({ variante, valor, origem, destino, onEdita
           >
             {TITULO[variante]}
           </span>
+          {recorrente && (
+            <span style={{ flex: '0 0 auto', display: 'inline-flex', color: 'var(--text-muted)' }} aria-label="Recorrente">
+              <IconeCollection tamanho={16} />
+            </span>
+          )}
         </div>
 
         <Valor tipo={valorTipo} valor={valorNum} />
