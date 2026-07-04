@@ -117,23 +117,24 @@ const headerSticky: React.CSSProperties = {
 
 /** Camada de fundo do header: blur + gradiente de opacidade. Fica ATRÁS do
  *  conteúdo (zIndex -1 no contexto isolado do header). A `mask` faz TANTO a cor
- *  QUANTO o blur desvanecerem até 0 no topo — sem isso o backdrop-filter deixaria
- *  uma borda seca na borda superior (que num web app coincide com o topo da
- *  tela, onde não há como "cortar" o conteúdo). O gradiente vai de opaco na base
- *  a transparente no topo; a máscara acompanha, some 100% antes do topo. */
+ *  QUANTO o blur desvanecerem, indo de pleno no topo a 0 na base — sem isso o
+ *  backdrop-filter deixaria uma borda seca na base. Opaco no topo (borda da
+ *  tela, onde o conteúdo precisa sumir de vez, já que num web app não há como
+ *  "cortar" na borda superior) e transparente na base (encontra a lista). */
 const headerFade: React.CSSProperties = {
   position: 'absolute',
   inset: 0,
   zIndex: -1,
   pointerEvents: 'none',
-  // Cor: opaca embaixo → transparente no topo (usa o fundo da página).
+  // Cor: opaca no TOPO (borda da tela, onde o conteúdo deve sumir de vez) →
+  // transparente na base (onde encontra a lista).
   background:
-    'linear-gradient(to top, var(--bg-page) 0%, var(--bg-page) 45%, color-mix(in srgb, var(--bg-page) 55%, transparent) 72%, transparent 100%)',
+    'linear-gradient(to bottom, var(--bg-page) 0%, var(--bg-page) 45%, color-mix(in srgb, var(--bg-page) 55%, transparent) 72%, transparent 100%)',
   backdropFilter: 'blur(12px)',
   WebkitBackdropFilter: 'blur(12px)',
-  // Máscara: o blur também desvanece de baixo (100%) para cima (0%).
-  maskImage: 'linear-gradient(to top, black 0%, black 45%, transparent 92%)',
-  WebkitMaskImage: 'linear-gradient(to top, black 0%, black 45%, transparent 92%)',
+  // Máscara: o blur é pleno no topo (100%) e desvanece para baixo (0%).
+  maskImage: 'linear-gradient(to bottom, black 0%, black 45%, transparent 92%)',
+  WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black 45%, transparent 92%)',
 };
 
 function HeaderDefault({ mesAno, onMenu, onAnterior, onProximo, innerRef }: DefaultProps & { innerRef: React.Ref<HTMLElement> }) {
