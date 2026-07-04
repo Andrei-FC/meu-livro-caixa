@@ -325,17 +325,6 @@ export interface PlanoDivisao {
   removerExcecoesAPartirDe: string;
 }
 
-/** Indica se a regra suporta "esta e as futuras" no modo dado. */
-export function suportaFuturas(
-  repeticao: Lancamento['repeticao'],
-  acao: 'salvar' | 'excluir',
-): boolean {
-  if (repeticao === 'avista') return false;
-  if (repeticao === 'recorrente') return true; // salvar e excluir
-  if (repeticao === 'parcelar') return acao === 'excluir'; // só cancelar
-  return false;
-}
-
 /**
  * Calcula o plano de "esta e as futuras".
  * @param regra      a linha-regra original (lancamentos)

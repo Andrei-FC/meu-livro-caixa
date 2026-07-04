@@ -26,7 +26,7 @@ export { FAB } from './FAB';
 export { Tabs } from './Tabs';
 export type { AbaId } from './Tabs';
 export { ModalDeAlerta } from './ModalDeAlerta';
-export type { TipoAlerta } from './ModalDeAlerta';
+export type { TipoAlerta, OpcaoAlerta } from './ModalDeAlerta';
 export { Header } from './Header';
 export { SeletorDeTema, TEMAS } from './SeletorDeTema';
 export type { ChaveTema } from './SeletorDeTema';
@@ -39,8 +39,7 @@ export { SeletorContaCartao } from './SeletorContaCartao';
 export type { ContextoSeletor, Selecao } from './SeletorContaCartao';
 export { LancarSheet } from './LancarSheet';
 export { EditarSheet } from './EditarSheet';
-export { EscopoSheet } from './EscopoSheet';
-export type { EscopoSerie } from './EscopoSheet';
+export type { EscopoSerie } from './EditarSheet';
 
 // Ícones (re-export de conveniência; também acessíveis em '../icons')
 export * from '../icons';
