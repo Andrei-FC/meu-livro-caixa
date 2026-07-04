@@ -111,7 +111,7 @@ export function ModalDeAlerta<T extends string = string>({
         </div>
 
         {modoEscopo && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} role="radiogroup">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }} role="radiogroup">
             {opcoes!.map(({ id, titulo: t, descricao }) => (
               <OpcaoDeLista
                 key={id}
@@ -124,7 +124,7 @@ export function ModalDeAlerta<T extends string = string>({
           </div>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
           {modoEscopo ? (
             <>
               <Botao hierarquia="primary" onClick={() => onConfirmarOpcao?.(selecionada)}>
@@ -179,6 +179,7 @@ function OpcaoDeLista({
       role="radio"
       aria-checked={selecionada}
       style={{
+        boxSizing: 'border-box',
         display: 'flex',
         alignItems: 'center',
         gap: 12,

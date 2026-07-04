@@ -21,6 +21,7 @@ export function Botao({ hierarquia = 'primary', style, disabled, children, ...re
       disabled={disabled}
       className="type-body-strong"
       style={{
+        boxSizing: 'border-box',
         padding: '14px 20px',
         borderRadius: 'var(--radius-md)',
         width: '100%',

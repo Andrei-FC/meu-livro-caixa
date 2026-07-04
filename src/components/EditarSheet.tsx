@@ -521,16 +521,11 @@ export function EditarSheet({
 
           {erro && <span className="type-caption" style={{ color: 'var(--value-saida)' }}>{erro}</span>}
 
-          {/* Excluir (§5.7) — evita toque acidental na lista. */}
-          <button
-            type="button"
-            onClick={aoExcluir}
-            disabled={salvando}
-            className="type-body-strong"
-            style={{ border: 'none', background: 'transparent', color: 'var(--value-saida)', padding: '8px 0', cursor: 'pointer', alignSelf: 'flex-start' }}
-          >
+          {/* Excluir (§5.7) — botão full-width, texto vermelho + borda (hierarquia
+              warning), dentro do sheet para evitar toque acidental na lista. */}
+          <Botao hierarquia="warning" onClick={aoExcluir} disabled={salvando}>
             Excluir
-          </button>
+          </Botao>
         </div>
 
         {/* Footer — parcela não salva (só exclui). */}
