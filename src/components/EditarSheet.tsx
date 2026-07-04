@@ -582,7 +582,7 @@ export function EditarSheet({
 
       {confirmarExcluirTodas && (
         <ModalDeAlerta
-          tipo="bloqueio"
+          tipo="confirmacao"
           titulo="Excluir a série inteira?"
           corpo="Isto apaga todas as ocorrências, inclusive as passadas já consolidadas. Não dá para desfazer."
           primaria={{ rotulo: 'Excluir tudo', onClick: () => aplicarExclusao('todas') }}

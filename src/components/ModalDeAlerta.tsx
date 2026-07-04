@@ -19,8 +19,8 @@ export type TipoAlerta = 'confirmacao' | 'bloqueio' | 'erro' | 'escopo';
 
 const ICONE_COR: Record<TipoAlerta, string> = {
   confirmacao: 'var(--value-saida)',
-  bloqueio: 'var(--value-saida)',
-  erro: 'var(--value-saida)',
+  bloqueio: 'var(--accent-default)',
+  erro: 'var(--text-muted)',
   escopo: 'var(--accent-default)',
 };
 
@@ -90,6 +90,7 @@ export function ModalDeAlerta<T extends string = string>({
         style={{
           display: 'flex',
           flexDirection: 'column',
+          alignItems: 'center',
           gap: 'var(--space-lg)',
           padding: 'var(--space-2xl)',
           borderRadius: 'var(--radius-lg)',
@@ -102,10 +103,10 @@ export function ModalDeAlerta<T extends string = string>({
           <IconeAlerta />
         </span>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span className="type-title" style={{ color: 'var(--text-primary)' }}>{titulo}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, width: '100%' }}>
+          <span className="type-title" style={{ color: 'var(--text-primary)', textAlign: 'center' }}>{titulo}</span>
           {corpo && (
-            <span className="type-body" style={{ color: 'var(--text-secondary)' }}>{corpo}</span>
+            <span className="type-body" style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>{corpo}</span>
           )}
         </div>
 
@@ -139,7 +140,7 @@ export function ModalDeAlerta<T extends string = string>({
             <>
               {primaria && (
                 <Botao
-                  hierarquia={tipo === 'escopo' ? 'primary' : 'warning'}
+                  hierarquia={tipo === 'confirmacao' ? 'warning' : 'primary'}
                   onClick={primaria.onClick}
                 >
                   {primaria.rotulo}
@@ -208,11 +209,12 @@ function OpcaoDeLista({
   );
 }
 
+/** icon / others / triangle-danger (Figma 2002:251) — triângulo preenchido de
+ *  cantos arredondados com exclamação. `currentColor` para herdar a cor do tipo. */
 function IconeAlerta() {
   return (
-    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M12 3l9 16H3l9-16z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-      <path d="M12 10v4M12 17h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <path d="M14.8 4.61301L21.501 15.774C22.464 17.377 21.991 19.486 20.444 20.484C19.9248 20.8202 19.3196 20.9994 18.701 21H5.298C3.477 21 2 19.47 2 17.581C2 16.942 2.173 16.317 2.498 15.774L9.2 4.61301C10.162 3.01001 12.196 2.51901 13.743 3.51701C14.171 3.79301 14.533 4.16801 14.8 4.61301ZM12 17C12.2652 17 12.5196 16.8947 12.7071 16.7071C12.8946 16.5196 13 16.2652 13 16C13 15.7348 12.8946 15.4804 12.7071 15.2929C12.5196 15.1054 12.2652 15 12 15C11.7348 15 11.4804 15.1054 11.2929 15.2929C11.1054 15.4804 11 15.7348 11 16C11 16.2652 11.1054 16.5196 11.2929 16.7071C11.4804 16.8947 11.7348 17 12 17ZM12 8.00001C11.7348 8.00001 11.4804 8.10537 11.2929 8.2929C11.1054 8.48044 11 8.73479 11 9.00001V13C11 13.2652 11.1054 13.5196 11.2929 13.7071C11.4804 13.8947 11.7348 14 12 14C12.2652 14 12.5196 13.8947 12.7071 13.7071C12.8946 13.5196 13 13.2652 13 13V9.00001C13 8.73479 12.8946 8.48044 12.7071 8.2929C12.5196 8.10537 12.2652 8.00001 12 8.00001Z" fill="currentColor" />
     </svg>
   );
 }

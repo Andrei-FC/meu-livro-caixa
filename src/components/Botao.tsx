@@ -9,7 +9,7 @@ type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
 const estilos: Record<Hierarquia, CSSProperties> = {
   primary: { background: 'var(--accent-default)', color: 'var(--text-on-accent)', border: 'none' },
   secondary: { background: 'var(--bg-surface)', color: 'var(--text-primary)', border: '1px solid var(--border-default)' },
-  warning: { background: 'var(--value-saida)', color: 'var(--text-on-accent)', border: 'none' },
+  warning: { background: 'var(--bg-surface)', color: 'var(--value-saida)', border: '1px solid var(--border-default)' },
   ghost: { background: 'transparent', color: 'var(--accent-default)', border: 'none' },
 };
 

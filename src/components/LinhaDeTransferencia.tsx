@@ -84,7 +84,7 @@ export function LinhaDeTransferencia({ variante, valor, origem, destino, recorre
             {TITULO[variante]}
           </span>
           {recorrente && (
-            <span style={{ flex: '0 0 auto', display: 'inline-flex', color: 'var(--text-muted)' }} aria-label="Recorrente">
+            <span style={{ flex: '0 0 auto', display: 'inline-flex', color: 'var(--text-primary)' }} aria-label="Recorrente">
               <IconeCollection tamanho={16} />
             </span>
           )}

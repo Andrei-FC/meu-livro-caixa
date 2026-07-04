@@ -23,18 +23,31 @@ type Props = {
  *  pill (fundo + borda); sem rótulo, é só a bolinha nua (novo design). */
 export function Tag({ cor = 'neutro', tema, children }: Props) {
   const cor_bolinha = tema ? 'var(--theme-bg)' : bullet[cor];
+  // Bolinha nua = variante "Cor=tema" do Figma (2005:14): container 12×12 com
+  // padding 4 e ponto 6×6. O container reserva o espaço padrão; o ponto é a marca.
   const bolinha = (
     <span
       aria-hidden
       data-card-theme={tema ?? undefined}
       style={{
-        width: 8,
-        height: 8,
-        borderRadius: '50%',
-        background: cor_bolinha,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 12,
+        height: 12,
         flex: '0 0 auto',
       }}
-    />
+    >
+      <span
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: cor_bolinha,
+          flex: '0 0 auto',
+        }}
+      />
+    </span>
   );
 
   // Sem rótulo: só a bolinha, sem o cromo do pill.
