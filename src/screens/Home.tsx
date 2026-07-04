@@ -20,8 +20,8 @@ import {
   type OcorrenciaTransferencia,
 } from '../lib/recorrencia';
 import {
-  Tabs,
-  type AbaId,
+  BottomNav,
+  type AbaHome,
   CardDeResumo,
   CabecalhoDeDia,
   SaldoDoDia,
@@ -50,9 +50,9 @@ import { CriarEditarCartao } from './CriarEditarCartao';
 import { CartaoFatura } from './CartaoFatura';
 
 /** Home real (§5.1). Compõe só a biblioteca de componentes.
- *  Estrutura do Figma (2009:11): TopBar (menu + nav de mês) → Card de resumo
- *  (fixo, acima das tabs) → Tabs → conteúdo. Na aba Lançamentos os itens são
- *  AGRUPADOS POR DIA: card branco com Cabeçalho de dia + linhas + Saldo do dia.
+ *  Nova navegação (Figma "03 - App Screens 1.0", Home bottom nav): Header
+ *  (menu + nav de mês) → conteúdo da aba → BottomNav fixo embaixo, 3 abas:
+ *  Lançamentos · Carteira (cartões + contas) · Relatório (com card de resumo).
  *  O seletor de mês controla todas as abas; mês-calendário inteiro (§5.1). */
 
 const MESES = [
@@ -78,7 +78,7 @@ export function Home() {
   const hoje = useMemo(() => new Date(), []);
   const [ano, setAno] = useState(hoje.getFullYear());
   const [mes, setMes] = useState(hoje.getMonth()); // 0-11
-  const [aba, setAba] = useState<AbaId>('lancamentos');
+  const [aba, setAba] = useState<AbaHome>('lancamentos');
 
   const [contas, setContas] = useState<Conta[]>([]);
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
@@ -492,30 +492,9 @@ export function Home() {
         onNavegar={navegarMenu}
       />
 
-      {/* ── Card de resumo: rola normal; some por baixo do header (§5.1) ── */}
-      <div style={{ padding: '0 var(--space-lg)' }}>
-        <CardDeResumo entradas={entradas} saidas={saidas} saldoMes={saldoMes} herdado={herdado} />
-      </div>
-
-      {/* ── Tabs: grudam logo abaixo do header quando o card sai de vista.
-             `top` = altura publicada pelo Header em --altura-header. ── */}
-      <div
-        style={{
-          position: 'sticky',
-          top: 'var(--altura-header, 0px)',
-          zIndex: 10,
-          background: 'var(--bg-page)',
-          padding: 'var(--space-md) var(--space-lg) 0',
-        }}
-      >
-        <Tabs ativa={aba} onMudar={setAba} />
-      </div>
-
-      {/* min-height garante folga de rolagem suficiente para esconder o card
-          de resumo em QUALQUER aba — assim as tabs, uma vez docadas abaixo do
-          header, não "descem" ao trocar para uma aba curta (relatório vazio,
-          poucas contas). O card sempre pode sair de vista; a posição das tabs
-          fica estável entre abas. */}
+      {/* Card de resumo e Tabs saíram do topo (nova navegação): os totais do
+          mês vivem só na aba Relatório (§5.1) e a navegação virou BottomNav
+          fixo embaixo. Reduz atrito: alcance de polegar + menos peso morto. */}
       <main
         style={{
           minHeight: '100dvh',
@@ -577,48 +556,55 @@ export function Home() {
               />
             )}
 
-            {aba === 'contas' && (
-              <Entidades vazio="Nenhuma conta ativa.">
-                {contas.map((c) =>
-                  c.tipo === 'poupanca' ? (
-                    <CardDeEntidade key={c.id} tipo="poupanca" nome={c.nome} valor={0 /* TODO §4.7 poupança */} tema={c.tema ?? undefined} />
-                  ) : (
-                    <CardDeEntidade key={c.id} tipo="conta" nome={c.nome} valor={saldosPorContaMesExibido.get(c.id) ?? 0} tema={c.tema ?? undefined} banco={c.icone} entradas={porConta.get(c.id)?.entradas ?? 0} saidas={porConta.get(c.id)?.saidas ?? 0} />
-                  ),
-                )}
-              </Entidades>
-            )}
+            {aba === 'carteira' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+                {/* CARTÕES (§5.5 Figma "Home — Cartões": cartões e contas na mesma
+                    tela, cada bloco com sua testeira). */}
+                <SecaoCarteira titulo="CARTÕES" vazio="Nenhum cartão cadastrado.">
+                  {cartoes.map((k) => {
+                    const realizado = realizadoPorCartao.get(k.id) ?? 0;
+                    const temPrev = k.previsao_mensal != null && k.previsao_mensal > 0;
+                    const pct = temPrev ? Math.round((realizado / k.previsao_mensal!) * 100) : 0;
+                    const legenda = temPrev
+                      ? `${pct}% da previsão · fecha dia ${k.dia_fechamento}`
+                      : `fecha dia ${k.dia_fechamento}`;
+                    return (
+                      <CardDeEntidade
+                        key={k.id}
+                        tipo="cartao"
+                        nome={k.nome}
+                        valor={realizado}
+                        tema={k.tema ?? undefined}
+                        banco={k.banco}
+                        bandeira={k.bandeira}
+                        realizado={realizado}
+                        previsao={k.previsao_mensal}
+                        legenda={legenda}
+                        onAbrir={() => setPagina({ tela: 'drill-cartao', cartao: k })}
+                      />
+                    );
+                  })}
+                </SecaoCarteira>
 
-            {aba === 'cartoes' && (
-              <Entidades vazio="Nenhum cartão cadastrado.">
-                {cartoes.map((k) => {
-                  const realizado = realizadoPorCartao.get(k.id) ?? 0;
-                  const temPrev = k.previsao_mensal != null && k.previsao_mensal > 0;
-                  const pct = temPrev ? Math.round((realizado / k.previsao_mensal!) * 100) : 0;
-                  const legenda = temPrev
-                    ? `${pct}% da previsão · fecha dia ${k.dia_fechamento}`
-                    : `fecha dia ${k.dia_fechamento}`;
-                  return (
-                    <CardDeEntidade
-                      key={k.id}
-                      tipo="cartao"
-                      nome={k.nome}
-                      valor={realizado}
-                      tema={k.tema ?? undefined}
-                      banco={k.banco}
-                      bandeira={k.bandeira}
-                      realizado={realizado}
-                      previsao={k.previsao_mensal}
-                      legenda={legenda}
-                      onAbrir={() => setPagina({ tela: 'drill-cartao', cartao: k })}
-                    />
-                  );
-                })}
-              </Entidades>
+                {/* CONTAS */}
+                <SecaoCarteira titulo="CONTAS" vazio="Nenhuma conta ativa.">
+                  {contas.map((c) =>
+                    c.tipo === 'poupanca' ? (
+                      <CardDeEntidade key={c.id} tipo="poupanca" nome={c.nome} valor={0 /* TODO §4.7 poupança */} tema={c.tema ?? undefined} />
+                    ) : (
+                      <CardDeEntidade key={c.id} tipo="conta" nome={c.nome} valor={saldosPorContaMesExibido.get(c.id) ?? 0} tema={c.tema ?? undefined} banco={c.icone} entradas={porConta.get(c.id)?.entradas ?? 0} saidas={porConta.get(c.id)?.saidas ?? 0} />
+                    ),
+                  )}
+                </SecaoCarteira>
+              </div>
             )}
 
             {aba === 'relatorio' && (
-              <Relatorio categorias={categoriasRelatorio} maiorGasto={maiorGasto} recorte={recorte} fluxo={fluxo} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+                {/* Card de resumo: agora vive só aqui (§5.1), sempre visível. */}
+                <CardDeResumo entradas={entradas} saidas={saidas} saldoMes={saldoMes} herdado={herdado} />
+                <Relatorio categorias={categoriasRelatorio} maiorGasto={maiorGasto} recorte={recorte} fluxo={fluxo} />
+              </div>
             )}
           </>
         )}
@@ -638,7 +624,12 @@ export function Home() {
         </p>
       </main>
 
-      <FAB onClick={() => setSheetAberto(true)} />
+      {/* FAB só na aba Lançamentos (§5.2): lançar é o gesto daquela tela; em
+          Carteira/Relatório ele era ruído. */}
+      {aba === 'lancamentos' && <FAB onClick={() => setSheetAberto(true)} />}
+
+      {/* Navegação principal fixa (§5.1) — 3 abas, alcance de polegar. */}
+      <BottomNav ativa={aba} onMudar={setAba} />
 
       <LancarSheet
         aberto={sheetAberto}
@@ -825,16 +816,24 @@ function Lancamentos(props: {
   );
 }
 
-/* ───────── Abas Contas / Cartões ───────── */
+/* ───────── Aba Carteira: seção titulada (Cartões / Contas) ───────── */
 
-function Entidades({ children, vazio }: { children: React.ReactNode; vazio: string }) {
+function SecaoCarteira({ titulo, children, vazio }: { titulo: string; children: React.ReactNode; vazio: string }) {
   const arr = (Array.isArray(children) ? children : [children]).flat().filter(Boolean);
-  if (arr.length === 0) {
-    return (
-      <p className="type-caption" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-xl) 0' }}>
-        {vazio}
-      </p>
-    );
-  }
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>{children}</div>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+      <div style={{ padding: '4px 0 0 4px' }}>
+        <span className="type-label" style={{ color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
+          {titulo}
+        </span>
+      </div>
+      {arr.length === 0 ? (
+        <p className="type-caption" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-lg) 0' }}>
+          {vazio}
+        </p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>{children}</div>
+      )}
+    </div>
+  );
 }

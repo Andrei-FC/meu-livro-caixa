@@ -1,11 +1,11 @@
-import { useState } from 'react';
 import { formatarBR } from '../lib/formato';
-import { IconeEye, IconeEyeOff } from '../icons';
 
 /**
  * Card de resumo — §5.1, Figma 2007:17.
  * Fonte única dos totais do mês; cobre o mês-calendário INTEIRO (fato + projeção,
- * §5.1). Toggle do olho cobre todos os valores com tarja (border/default).
+ * §5.1). Aparece só na aba Relatório na nova navegação (antes vivia acima das
+ * tabs em todas as telas — peso morto). Valores SEMPRE visíveis: o toggle de
+ * ocultar (que abria oculto por default) foi removido a pedido.
  */
 
 type Props = {
@@ -13,27 +13,9 @@ type Props = {
   entradas: number;
   saidas: number;
   herdado: number;
-  ocultarValores?: boolean;
-  onToggleOcultar?: (oculto: boolean) => void;
 };
 
-export function CardDeResumo({
-  saldoMes,
-  entradas,
-  saidas,
-  herdado,
-  ocultarValores,
-  onToggleOcultar,
-}: Props) {
-  const [interno, setInterno] = useState(true);
-  const oculto = ocultarValores ?? interno;
-
-  function alternar() {
-    const novo = !oculto;
-    if (onToggleOcultar) onToggleOcultar(novo);
-    else setInterno(novo);
-  }
-
+export function CardDeResumo({ saldoMes, entradas, saidas, herdado }: Props) {
   return (
     <div
       style={{
@@ -46,47 +28,23 @@ export function CardDeResumo({
         width: '100%',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span className="type-label" style={{ color: 'var(--text-muted)' }}>SALDO DO MÊS</span>
-          <Oculto oculto={oculto}>
-            <span className="type-display" style={{ color: 'var(--text-primary)' }}>
-              {formatarBR(saldoMes, { prefixo: true })}
-            </span>
-          </Oculto>
-        </div>
-
-        <button
-          type="button"
-          onClick={alternar}
-          aria-pressed={oculto}
-          aria-label={oculto ? 'Mostrar valores' : 'Ocultar valores'}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 36,
-            height: 36,
-            border: 'none',
-            borderRadius: 18,
-            background: 'transparent',
-            color: 'var(--text-muted)',
-          }}
-        >
-          {oculto ? <IconeEyeOff tamanho={22} /> : <IconeEye tamanho={22} />}
-        </button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span className="type-label" style={{ color: 'var(--text-muted)' }}>SALDO DO MÊS</span>
+        <span className="type-display" style={{ color: 'var(--text-primary)' }}>
+          {formatarBR(saldoMes, { prefixo: true })}
+        </span>
       </div>
 
       <hr style={{ border: 'none', borderTop: '1px solid var(--border-default)', margin: 0, width: '100%' }} />
 
       <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
-        <Total rotulo="Entradas" cor="var(--value-entrada)" oculto={oculto}>
+        <Total rotulo="Entradas" cor="var(--value-entrada)">
           {formatarBR(entradas, { sinal: '+' })}
         </Total>
-        <Total rotulo="Saídas" cor="var(--value-saida)" oculto={oculto}>
+        <Total rotulo="Saídas" cor="var(--value-saida)">
           {formatarBR(-Math.abs(saidas))}
         </Total>
-        <Total rotulo="Herdado" cor="var(--text-secondary)" oculto={oculto}>
+        <Total rotulo="Herdado" cor="var(--text-secondary)">
           {formatarBR(herdado)}
         </Total>
       </div>
@@ -94,44 +52,11 @@ export function CardDeResumo({
   );
 }
 
-function Total({
-  rotulo,
-  cor,
-  oculto,
-  children,
-}: {
-  rotulo: string;
-  cor: string;
-  oculto: boolean;
-  children: React.ReactNode;
-}) {
+function Total({ rotulo, cor, children }: { rotulo: string; cor: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
       <span className="type-micro" style={{ color: 'var(--text-muted)' }}>{rotulo}</span>
-      <Oculto oculto={oculto}>
-        <span className="type-body-small-strong" style={{ color: cor }}>{children}</span>
-      </Oculto>
+      <span className="type-body-small-strong" style={{ color: cor }}>{children}</span>
     </div>
   );
 }
-
-/** Envolve um valor; quando oculto, cobre com tarja (border/default, raio sm). */
-function Oculto({ oculto, children }: { oculto: boolean; children: React.ReactNode }) {
-  return (
-    <span style={{ position: 'relative', display: 'inline-flex' }}>
-      <span style={{ visibility: oculto ? 'hidden' : 'visible' }}>{children}</span>
-      {oculto && (
-        <span
-          aria-hidden
-          style={{
-            position: 'absolute',
-            inset: 0,
-            borderRadius: 'var(--radius-sm)',
-            background: 'var(--border-default)',
-          }}
-        />
-      )}
-    </span>
-  );
-}
-
