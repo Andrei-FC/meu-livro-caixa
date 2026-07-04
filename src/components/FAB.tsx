@@ -20,8 +20,9 @@ export function FAB({ onClick, 'aria-label': ariaLabel = 'Novo lançamento' }: P
       style={{
         position: 'fixed',
         right: 'calc(var(--space-lg) + env(safe-area-inset-right))',
-        // Acima do BottomNav (~65px de barra) para não sobrepor a navegação.
-        bottom: 'calc(var(--space-lg) + 65px + env(safe-area-inset-bottom))',
+        // Acima do BottomNav, com respiro maior para o botão não encostar na
+        // barra nem cobrir a última linha da lista.
+        bottom: 'calc(var(--space-xl) + 72px + env(safe-area-inset-bottom))',
         width: 56,
         height: 56,
         borderRadius: '50%',

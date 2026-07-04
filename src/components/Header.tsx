@@ -102,19 +102,44 @@ export function Header(props: Props) {
   return <HeaderDefault {...props} innerRef={ref} />;
 }
 
-/** Estilo comum do <header> sticky (universal). Fundo opaco para a lista não
- *  vazar por trás ao rolar. */
+/** Estilo comum do <header> sticky (universal). O fundo NÃO é opaco: quem dá
+ *  o efeito é uma camada `headerFade` posicionada atrás do conteúdo, com
+ *  desfoque + gradiente de opacidade (estilo iOS). A borda de baixo some junto
+ *  com a máscara. */
 const headerSticky: React.CSSProperties = {
   position: 'sticky',
   top: 0,
   zIndex: 20,
-  background: 'var(--bg-page)',
-  paddingTop: 'var(--space-md)',
+  // Sem background aqui — a camada headerFade cuida do visual.
+  paddingTop: 'env(safe-area-inset-top)',
+  isolation: 'isolate',
+};
+
+/** Camada de fundo do header: blur + gradiente de opacidade. Fica ATRÁS do
+ *  conteúdo (zIndex -1 no contexto isolado do header). A `mask` faz TANTO a cor
+ *  QUANTO o blur desvanecerem até 0 no topo — sem isso o backdrop-filter deixaria
+ *  uma borda seca na borda superior (que num web app coincide com o topo da
+ *  tela, onde não há como "cortar" o conteúdo). O gradiente vai de opaco na base
+ *  a transparente no topo; a máscara acompanha, some 100% antes do topo. */
+const headerFade: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  zIndex: -1,
+  pointerEvents: 'none',
+  // Cor: opaca embaixo → transparente no topo (usa o fundo da página).
+  background:
+    'linear-gradient(to top, var(--bg-page) 0%, var(--bg-page) 45%, color-mix(in srgb, var(--bg-page) 55%, transparent) 72%, transparent 100%)',
+  backdropFilter: 'blur(12px)',
+  WebkitBackdropFilter: 'blur(12px)',
+  // Máscara: o blur também desvanece de baixo (100%) para cima (0%).
+  maskImage: 'linear-gradient(to top, black 0%, black 45%, transparent 92%)',
+  WebkitMaskImage: 'linear-gradient(to top, black 0%, black 45%, transparent 92%)',
 };
 
 function HeaderDefault({ mesAno, onMenu, onAnterior, onProximo, innerRef }: DefaultProps & { innerRef: React.Ref<HTMLElement> }) {
   return (
     <header ref={innerRef} style={headerSticky}>
+      <div aria-hidden style={headerFade} />
       <div style={topBar}>
         {/* Menu — pill 40 */}
         <button type="button" aria-label="Menu" onClick={onMenu} style={{ ...botaoPill, width: 40, height: 40 }}>
@@ -146,6 +171,7 @@ function HeaderDefault({ mesAno, onMenu, onAnterior, onProximo, innerRef }: Defa
 function HeaderChuld({ titulo, onVoltar, fechar = false, fab = false, onFab, mostrarData = false, mesAno, onAnterior, onProximo, innerRef }: ChuldProps & { innerRef: React.Ref<HTMLElement> }) {
   return (
     <header ref={innerRef} style={headerSticky}>
+      <div aria-hidden style={headerFade} />
       <div style={topBar}>
         {/* Voltar (ou fechar) + título */}
         <div style={{ display: 'flex', flex: '1 0 0', alignItems: 'center', gap: 'var(--space-sm)', minWidth: 0 }}>

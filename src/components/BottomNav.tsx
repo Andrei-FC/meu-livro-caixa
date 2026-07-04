@@ -53,7 +53,7 @@ export function BottomNav({ ativa, onMudar }: Props) {
           alignItems: 'stretch',
           width: '100%',
           maxWidth: 480,
-          padding: '4px 20px calc(12px + env(safe-area-inset-bottom))',
+          padding: '4px 20px calc(4px + env(safe-area-inset-bottom))',
         }}
       >
         {ABAS.map(({ id, rotulo, Icone }) => {
