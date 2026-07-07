@@ -68,3 +68,13 @@ export interface ExcecaoSerie {
   nota: string | null; // override; null = herda
   criada_em: string;
 }
+
+export interface Pagamento {
+  id: string;
+  cartao_id: string; // FK → cartoes
+  // Índice de mês absoluto (ano*12 + mês 0-11) do ciclo que FECHA — identifica
+  // univocamente a fatura, imune a fuso e coerente com o motor (§4.8).
+  ciclo_abs: number;
+  data_paga: string; // YYYY-MM-DD — data efetiva do pagamento (§4.4, override do dia_pagamento)
+  criado_em: string;
+}

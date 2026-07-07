@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react';
-import { Header, CardDeEntidade, LinhaDeLancamento } from '../components';
+import { Header, CardDeEntidade, LinhaDeLancamento, Botao, FazerPagamentoSheet } from '../components';
 import {
   ocorrenciasDoCiclo,
   realizadoDoCiclo,
   faseDoCiclo,
+  intervaloPagamento,
+  posicaoFatura,
   type OcorrenciaLancamento,
   type IndiceExcecoes,
+  type IndicePagamentos,
 } from '../lib/recorrencia';
 import { formatarBR } from '../lib/formato';
 import type { Cartao, Lancamento } from '../types/db';
@@ -38,10 +41,25 @@ const MESES = [
 ];
 const MESES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
+/** Date local → ISO YYYY-MM-DD, sem fuso (evita o -1 dia do toISOString). */
+function montaISOLocal(d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/** Um dia antes de uma data ISO (para o topo inclusivo a partir do exclusivo). */
+function diaAnteriorISO(iso: string): string {
+  const [a, m, d] = iso.split('-').map(Number);
+  return montaISOLocal(new Date(a, m - 1, d - 1));
+}
+
 type Props = {
   cartao: Cartao;
   lancamentos: Lancamento[];
   excecoes: IndiceExcecoes;
+  /** Pagamentos efetivos por cartão+ciclo (§4.4) — data efetiva sobrepõe o dia_pagamento. */
+  pagamentos: IndicePagamentos;
   hoje: Date;
   /** Mês/ano em que a linha da fatura foi tocada na Home — ponto de partida. */
   anoInicial: number;
@@ -49,17 +67,21 @@ type Props = {
   onVoltar: () => void;
   /** Abre o Editar da ocorrência tocada (mesmo fluxo da Home, §5.7). */
   onEditar: (o: OcorrenciaLancamento) => void;
+  /** Grava a data efetiva de pagamento do ciclo (§5.3). A Home persiste e recarrega. */
+  onPagar: (cicloAbs: number, dataISO: string) => void;
 };
 
 export function CartaoFatura({
   cartao,
   lancamentos,
   excecoes,
+  pagamentos,
   hoje,
   anoInicial,
   mesInicial,
   onVoltar,
   onEditar,
+  onPagar,
 }: Props) {
   // Mês exibido — começa no mês da linha tocada; navegável.
   const [ano, setAno] = useState(anoInicial);
@@ -115,6 +137,32 @@ export function CartaoFatura({
   // Particiona as ocorrências do ciclo nos três grupos do design.
   const grupos = useMemo(() => particionar(ocorrencias), [ocorrencias]);
 
+  // Sheet "Fazer Pagamento" (§5.3): só disponível na fase FECHADA.
+  const [sheetPagamento, setSheetPagamento] = useState(false);
+
+  // Intervalo válido de data de pagamento (§5.3): [fechamento, próximo fechamento).
+  const intervalo = useMemo(() => intervaloPagamento(cartao, cicloAbs), [cartao, cicloAbs]);
+
+  // Data default do campo: pagamento já registrado (edição), senão hoje —
+  // clampada dentro do intervalo válido (não pode antes do fechamento nem
+  // cruzar o próximo ciclo).
+  const dataDefault = useMemo(() => {
+    const pagoISO = pagamentos.get(cartao.id)?.get(cicloAbs)?.data_paga;
+    if (pagoISO) return pagoISO;
+    const hojeISO = montaISOLocal(hoje);
+    if (hojeISO < intervalo.min) return intervalo.min;
+    // max é exclusivo → o último dia válido é o anterior; se hoje for ≥ max, usa esse.
+    const ultimo = diaAnteriorISO(intervalo.maxExclusivo);
+    return hojeISO > ultimo ? ultimo : hojeISO;
+  }, [pagamentos, cartao.id, cicloAbs, hoje, intervalo]);
+
+  // Caption "Vencimento desse cartão DD/MM" (dia_pagamento sobre dia_fechamento,
+  // como no Figma "10/06"). O mês é o do vencimento-padrão do ciclo.
+  const posPadrao = useMemo(() => posicaoFatura(cartao, cicloAbs), [cartao, cicloAbs]);
+  const vencimentoTexto = `Vencimento desse cartão ${String(cartao.dia_pagamento).padStart(2, '0')}/${String(
+    (posPadrao.mesAbs % 12) + 1,
+  ).padStart(2, '0')}`;
+
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100dvh', background: 'var(--bg-page)' }}>
       <Header
@@ -133,7 +181,8 @@ export function CartaoFatura({
           display: 'flex',
           flexDirection: 'column',
           gap: 'var(--space-lg)',
-          padding: 'var(--space-sm) var(--space-lg) var(--space-xl)',
+          // Espaço extra no fim para a área do botão flutuante não cobrir a última linha.
+          padding: `var(--space-sm) var(--space-lg) ${fase === 'fechada' ? 'calc(var(--space-xl) + 88px)' : 'var(--space-xl)'}`,
         }}
       >
         {/* Hero: instância do Card de entidade (Cartão) — fonte única do visual */}
@@ -164,6 +213,45 @@ export function CartaoFatura({
           </>
         )}
       </main>
+
+      {/* Botão flutuante "Fazer Pagamento" — só na fase FECHADA (§5.3). Área
+          ancorada na base, com fundo/borda como o Footer do Figma. */}
+      {fase === 'fechada' && (
+        <div
+          style={{
+            position: 'fixed',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 40,
+            display: 'flex',
+            justifyContent: 'center',
+            padding: '12px var(--space-lg) calc(24px + env(safe-area-inset-bottom))',
+            background: 'var(--bg-surface)',
+            borderTop: '1px solid var(--border-default)',
+          }}
+        >
+          <div style={{ width: '100%', maxWidth: 480 }}>
+            <Botao hierarquia="primary" onClick={() => setSheetPagamento(true)}>
+              Fazer Pagamento
+            </Botao>
+          </div>
+        </div>
+      )}
+
+      <FazerPagamentoSheet
+        aberto={sheetPagamento}
+        onFechar={() => setSheetPagamento(false)}
+        valor={realizado}
+        dataInicial={dataDefault}
+        min={intervalo.min}
+        maxExclusivo={intervalo.maxExclusivo}
+        vencimentoTexto={vencimentoTexto}
+        onPagar={(dataISO) => {
+          setSheetPagamento(false);
+          onPagar(cicloAbs, dataISO);
+        }}
+      />
     </div>
   );
 }

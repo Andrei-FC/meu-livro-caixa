@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { formatarBR } from '../lib/formato';
-import type { Conta, Cartao, Lancamento, ExcecaoSerie, Transferencia } from '../types/db';
+import type { Conta, Cartao, Lancamento, ExcecaoSerie, Transferencia, Pagamento } from '../types/db';
 import {
   lancamentosNoMes,
   indexarExcecoes,
+  indexarPagamentos,
   saldoHerdado,
   liquidoDoMes,
   faturaNoMes,
   realizadoDoCiclo,
+  faseDoCiclo,
   diaPagamentoNoMes,
+  posicaoFatura,
   saldoAcumuladoPorConta,
   fluxoDoMes,
   saldoPorPoupanca,
@@ -18,6 +21,8 @@ import {
   parteData,
   type OcorrenciaLancamento,
   type OcorrenciaTransferencia,
+  type IndiceExcecoes,
+  type IndicePagamentos,
 } from '../lib/recorrencia';
 import {
   BottomNav,
@@ -65,15 +70,6 @@ const DIAS_SEMANA = [
   'Quinta-feira', 'Sexta-feira', 'Sábado',
 ];
 
-/** Fase da fatura pelo dia de fechamento vs. hoje, dentro do mês exibido (§4.4). */
-function faseFatura(cartao: Cartao, ano: number, mes: number, hoje: Date): FaseFatura {
-  const ref = new Date(ano, mes, 1);
-  const mesAtual = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
-  if (ref < mesAtual) return 'fechada';
-  if (ref > mesAtual) return 'futura';
-  return hoje.getDate() >= cartao.dia_fechamento ? 'fechada' : 'aberta';
-}
-
 export function Home() {
   const hoje = useMemo(() => new Date(), []);
   const [ano, setAno] = useState(hoje.getFullYear());
@@ -85,6 +81,7 @@ export function Home() {
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [excecoes, setExcecoes] = useState<ExcecaoSerie[]>([]);
   const [transferencias, setTransferencias] = useState<Transferencia[]>([]);
+  const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [sheetAberto, setSheetAberto] = useState(false);
@@ -124,14 +121,16 @@ export function Home() {
       supabase.from('lancamentos').select('*').order('data'),
       supabase.from('excecoes_serie').select('*'),
       supabase.from('transferencias').select('*'),
-    ]).then(([rc, rk, rl, re, rt]) => {
-      const e = rc.error || rk.error || rl.error || re.error || rt.error;
+      supabase.from('cartoes_pagamentos').select('*'),
+    ]).then(([rc, rk, rl, re, rt, rp]) => {
+      const e = rc.error || rk.error || rl.error || re.error || rt.error || rp.error;
       if (e) { setErro(e.message); setCarregando(false); return; }
       setContas(rc.data ?? []);
       setCartoes(rk.data ?? []);
       setLancamentos(rl.data ?? []);
       setExcecoes(re.data ?? []);
       setTransferencias(rt.data ?? []);
+      setPagamentos(rp.data ?? []);
       setErro(null);
       setCarregando(false);
     }).catch((err) => {
@@ -193,6 +192,7 @@ export function Home() {
   // O motor expande parcelas/recorrências; o passado e o futuro (até o
   // horizonte) saem daqui, não de um filtro por data crua.
   const indiceExcecoes = useMemo(() => indexarExcecoes(excecoes), [excecoes]);
+  const indicePagamentos = useMemo(() => indexarPagamentos(pagamentos), [pagamentos]);
 
   const ocorrenciasDoMes = useMemo(
     () => lancamentosNoMes(lancamentos, ano, mes, hoje, indiceExcecoes),
@@ -219,10 +219,10 @@ export function Home() {
   const faturaDoMes = useMemo(() => {
     const m = new Map<string, number>();
     for (const k of cartoes) {
-      m.set(k.id, faturaNoMes(lancamentos, k, ano, mes, hoje, indiceExcecoes));
+      m.set(k.id, faturaNoMes(lancamentos, k, ano, mes, hoje, indiceExcecoes, indicePagamentos));
     }
     return m;
-  }, [cartoes, lancamentos, ano, mes, hoje, indiceExcecoes]);
+  }, [cartoes, lancamentos, ano, mes, hoje, indiceExcecoes, indicePagamentos]);
 
   // Realizado do ciclo que VENCE no mês exibido, por cartão — para o display da
   // linha de fatura (o "R$ X / previsão"). Deve seguir o mesmo ciclo que
@@ -298,9 +298,9 @@ export function Home() {
   const saldosPorConta = useMemo(
     () => saldoAcumuladoPorConta(
       lancamentos, transferencias, contas, cartoes,
-      hoje.getFullYear(), hoje.getMonth(), hoje, indiceExcecoes,
+      hoje.getFullYear(), hoje.getMonth(), hoje, indiceExcecoes, indicePagamentos,
     ),
-    [lancamentos, transferencias, contas, cartoes, hoje, indiceExcecoes],
+    [lancamentos, transferencias, contas, cartoes, hoje, indiceExcecoes, indicePagamentos],
   );
   // Saldo guardado por poupança (§5.4) — cards do Cofre e hero do drill-down.
   const saldosPorPoupanca = useMemo(
@@ -308,13 +308,23 @@ export function Home() {
     [transferencias, contas, hoje],
   );
   const poupancas = useMemo(() => contas.filter((c) => c.tipo === 'poupanca'), [contas]);
-  // Saldo acumulado por conta no MÊS EXIBIDO — cards da aba Contas da Home
-  // (acompanha a navegação de mês).
+  // Saldo por conta para a aba CARTEIRA — a "foto de hoje" (§5.6). Passamos
+  // sempre o corte = hoje: no mês corrente corta em hoje (só o que já
+  // aconteceu; salário do dia 30 não conta até cair); meses passados entram
+  // inteiros (tudo já é ≤ hoje, o corte não remove nada); mês futuro sobra só o
+  // herdado (todo movimento do mês futuro é > hoje). Um único parâmetro cobre os
+  // três casos — o corte só morde o mês alvo, e o alvo é o mês exibido.
+  const corteHoje = useMemo(() => {
+    const mm = String(hoje.getMonth() + 1).padStart(2, '0');
+    const dd = String(hoje.getDate()).padStart(2, '0');
+    return `${hoje.getFullYear()}-${mm}-${dd}`;
+  }, [hoje]);
   const saldosPorContaMesExibido = useMemo(
     () => saldoAcumuladoPorConta(
-      lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes,
+      lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes, indicePagamentos,
+      corteHoje,
     ),
-    [lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes],
+    [lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes, indicePagamentos, corteHoje],
   );
   // Saldo herdado: acumulado desde a âncora (1º registro) até o mês anterior
   // (§4.7). Calculado na leitura e memoizado — barato porque expande regras,
@@ -357,6 +367,20 @@ export function Home() {
     if (destino === 'cartoes') { setPagina({ tela: 'gerenciar-cartoes' }); return; }
     if (destino === 'cofre') { setPagina({ tela: 'cofre' }); return; }
     // TODO: rotear categorias/configurações (§5.8)
+  }
+
+  // Grava a data efetiva de pagamento de uma fatura fechada (§5.3). Upsert por
+  // (cartao_id, ciclo_abs): pagar de novo o mesmo ciclo sobrescreve a data
+  // (não acumula linhas). A data escolhida passa a reger em que mês/dia a
+  // fatura pesa no saldo (§4.4) — recarrega para o motor reposicionar a linha.
+  async function registrarPagamento(cartao: Cartao, cicloAbs: number, dataISO: string) {
+    await supabase
+      .from('cartoes_pagamentos')
+      .upsert(
+        { cartao_id: cartao.id, ciclo_abs: cicloAbs, data_paga: dataISO },
+        { onConflict: 'cartao_id,ciclo_abs' },
+      );
+    carregar();
   }
 
   // Renderiza as páginas próprias por cima da Home (§5.8). Recarrega os dados ao
@@ -408,11 +432,13 @@ export function Home() {
         cartao={pagina.cartao}
         lancamentos={lancamentos}
         excecoes={indiceExcecoes}
+        pagamentos={indicePagamentos}
         hoje={hoje}
         anoInicial={ano}
         mesInicial={mes}
         onVoltar={() => setPagina(null)}
         onEditar={(o) => { setPagina(null); setEmEdicao(o); }}
+        onPagar={(cicloAbs, dataISO) => registrarPagamento(pagina.cartao, cicloAbs, dataISO)}
       />
     );
   }
@@ -547,8 +573,10 @@ export function Home() {
                 cartoes={cartoes}
                 contaPorId={contaPorId}
                 faturaDoMes={faturaDoMes}
-                realizadoPorCartao={realizadoPorCartao}
-                fase={(k) => faseFatura(k, ano, mes, hoje)}
+                lancamentosRaw={lancamentos}
+                excecoes={indiceExcecoes}
+                pagamentos={indicePagamentos}
+                hoje={hoje}
                 onEditar={setEmEdicao}
                 onApagarTransf={setTransfApagar}
                 onAbrirCartao={(k) => setPagina({ tela: 'drill-cartao', cartao: k })}
@@ -678,7 +706,7 @@ export function Home() {
 
 type ItemDia =
   | { kind: 'lancamento'; o: OcorrenciaLancamento }
-  | { kind: 'fatura'; k: Cartao }
+  | { kind: 'fatura'; k: Cartao; cicloAbs: number; realizado: number; fase: FaseFatura }
   | { kind: 'transferencia'; t: OcorrenciaTransferencia };
 
 function Lancamentos(props: {
@@ -690,15 +718,20 @@ function Lancamentos(props: {
   contaPorId: Map<string, Conta>;
   /** Fatura que VENCE no mês exibido, por cartão (o que pesa no saldo, §4.4). */
   faturaDoMes: Map<string, number>;
-  /** Realizado do ciclo corrente, por cartão (para o display da linha). */
-  realizadoPorCartao: Map<string, number>;
-  fase: (k: Cartao) => FaseFatura;
+  // Cru + índices: para posicionar a fatura no ciclo que REALMENTE cai neste mês
+  // quando há pagamento efetivo (§5.3) — a data paga pode mover a linha de mês
+  // e de dia, então o dia/realizado/fase são derivados do ciclo que aterrissa
+  // aqui, não do ciclo-padrão.
+  lancamentosRaw: Lancamento[];
+  excecoes: IndiceExcecoes;
+  pagamentos: IndicePagamentos;
+  hoje: Date;
   onEditar: (o: OcorrenciaLancamento) => void;
   onApagarTransf: (t: OcorrenciaTransferencia) => void;
   onAbrirCartao: (k: Cartao) => void;
   saldoInicial: number;
 }) {
-  const { ano, mes, ocorrencias, transferencias, cartoes, contaPorId, faturaDoMes, realizadoPorCartao, fase, onEditar, onApagarTransf, onAbrirCartao, saldoInicial } = props;
+  const { ano, mes, ocorrencias, transferencias, cartoes, contaPorId, faturaDoMes, lancamentosRaw, excecoes, pagamentos, hoje, onEditar, onApagarTransf, onAbrirCartao, saldoInicial } = props;
 
   // Agrupa por dia. A data de cada ocorrência já vem resolvida pelo motor
   // (§4.1: âncora no dia + clamp). A fatura de cada cartão entra no DIA DO
@@ -717,6 +750,8 @@ function Lancamentos(props: {
 
   const grupos = useMemo(() => {
     const porDia = new Map<number, ItemDia[]>();
+    const doCartao = (id: string) => lancamentosRaw.filter((l) => l.cartao_id === id);
+    const faseMap = (f: string): FaseFatura => f as FaseFatura;
     for (const o of ocorrencias) {
       const [, , dia] = parteData(o.data);
       (porDia.get(dia) ?? porDia.set(dia, []).get(dia)!).push({ kind: 'lancamento', o });
@@ -725,11 +760,26 @@ function Lancamentos(props: {
       const [, , dia] = parteData(t.data);
       (porDia.get(dia) ?? porDia.set(dia, []).get(dia)!).push({ kind: 'transferencia', t });
     }
+    // Fatura: descobre o ciclo que REALMENTE cai neste mês (§5.3 — a data
+    // efetiva de pagamento pode ter movido a linha de ±1 mês). O dia, o
+    // realizado e a fase são derivados desse ciclo, não do ciclo-padrão.
+    const alvoAbs = ano * 12 + mes;
     for (const k of cartoes) {
       const peso = faturaDoMes.get(k.id) ?? 0;
-      if (peso <= 0) continue; // nenhuma fatura vence neste mês para este cartão
-      const dia = diaPagamentoNoMes(k, ano, mes);
-      (porDia.get(dia) ?? porDia.set(dia, []).get(dia)!).push({ kind: 'fatura', k });
+      if (peso <= 0) continue; // nenhuma fatura pesa neste mês para este cartão
+      const cicloPadrao = k.dia_pagamento > k.dia_fechamento ? alvoAbs : alvoAbs - 1;
+      let cicloAbs: number | null = null;
+      let dia = diaPagamentoNoMes(k, ano, mes);
+      for (const c of [cicloPadrao - 1, cicloPadrao, cicloPadrao + 1]) {
+        if (c < 0) continue;
+        const pos = posicaoFatura(k, c, pagamentos);
+        if (pos.mesAbs === alvoAbs) { cicloAbs = c; dia = pos.dia; break; }
+      }
+      if (cicloAbs == null) continue;
+      const realizado = realizadoDoCiclo(doCartao(k.id), k, cicloAbs, hoje, excecoes);
+      const fase = faseMap(faseDoCiclo(cicloAbs, k, hoje));
+      const diaClamp = Math.min(Math.max(dia, 1), new Date(ano, mes + 1, 0).getDate());
+      (porDia.get(diaClamp) ?? porDia.set(diaClamp, []).get(diaClamp)!).push({ kind: 'fatura', k, cicloAbs, realizado, fase });
     }
     // Saldo acumulado dia a dia, partindo do herdado do mês (§4.7).
     let acc = saldoInicial;
@@ -744,7 +794,7 @@ function Lancamentos(props: {
         }
         return { dia, itens, saldoAcumulado: acc };
       });
-  }, [ocorrencias, transferencias, cartoes, faturaDoMes, saldoInicial, ano, mes, contaPorId]);
+  }, [ocorrencias, transferencias, cartoes, faturaDoMes, saldoInicial, ano, mes, contaPorId, lancamentosRaw, excecoes, pagamentos, hoje]);
 
   if (grupos.length === 0) {
     return (
@@ -799,9 +849,9 @@ function Lancamentos(props: {
                     titulo={it.k.nome}
                     tagTexto={`fecha dia ${it.k.dia_fechamento}`}
                     tagTema={contaPorId.get(it.k.conta_id)?.tema}
-                    fase={fase(it.k)}
-                    realizado={realizadoPorCartao.get(it.k.id) ?? 0}
-                    previsao={it.k.previsao_mensal}
+                    fase={it.fase}
+                    realizado={it.realizado}
+                    previsao={it.fase === 'fechada' ? null : it.k.previsao_mensal}
                     onAbrir={() => onAbrirCartao(it.k)}
                   />
                 ),
