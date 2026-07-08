@@ -1,5 +1,6 @@
-import { useId, useMemo } from 'react';
+import { useId, useMemo, useRef, useState, useCallback } from 'react';
 import type { PontoFluxo } from '../lib/recorrencia';
+import { formatarBR } from '../lib/formato';
 
 /**
  * Gráfico "fluxo do mês" (§5.5) — linha do SALDO EM CONTA ao longo dos dias do
@@ -9,6 +10,13 @@ import type { PontoFluxo } from '../lib/recorrencia';
  *
  * SVG puro (sem lib), curva suavizada (Catmull-Rom → Bézier), área com leve
  * gradiente. Cores/tipografia por token. Figma: 2301:1573.
+ *
+ * SCRUBBING (Popover grafico de fluxo, Figma 2366:2945): tocar ou arrastar o
+ * dedo sobre o gráfico mostra o saldo do dia sob o dedo. O popover é uma pílula
+ * (accent/subtle + borda accent/default) que flutua 40px acima do ponto,
+ * ligada a ele por uma linha vertical (o "conector"). Segue o dedo na
+ * horizontal, sempre grudando no dia mais próximo (não interpola entre dias —
+ * o dado é diário). Some ao soltar. Só leitura; não altera nada.
  */
 
 type Props = {
@@ -28,6 +36,10 @@ const PLOT_H = H - PAD_T - PAD_B;
 
 const DIAS_EIXO = [1, 5, 10, 15, 20, 25, 30];
 const LINHAS_Y = 4; // nº de faixas horizontais
+
+// Popover de scrubbing (Figma 2366:2945): o conector tem 40px de altura no
+// design; aqui é medida do viewBox (a mesma escala do gráfico).
+const CONECTOR = 40;
 
 /** Escolhe um "passo" redondo (1,2,2.5,5×10^n) p/ o eixo Y ficar legível. */
 function passoRedondo(bruto: number): number {
@@ -62,6 +74,11 @@ function fmtCompacto(n: number): string {
 
 export function GraficoFluxoDoMes({ pontos }: Props) {
   const gradId = useId();
+
+  // Índice do dia sob o dedo durante o scrubbing; null = sem toque.
+  const [ativo, setAtivo] = useState<number | null>(null);
+  // Fator viewBox→px (largura renderizada ÷ W), para posicionar o popover HTML.
+  const svgRef = useRef<SVGSVGElement>(null);
 
   const g = useMemo(() => {
     if (pontos.length === 0) return null;
@@ -110,10 +127,43 @@ export function GraficoFluxoDoMes({ pontos }: Props) {
     });
 
     const zeroVisivel = dMin < 0 && dMax > 0;
-    return { d, dArea, ticks, marcos, x, y, dMin, dMax, zeroY: y(0), zeroVisivel };
+    return { d, dArea, ticks, marcos, pts, x, y, dMin, dMax, zeroY: y(0), zeroVisivel };
   }, [pontos]);
 
+  // Mapeia um evento de ponteiro para o índice do dia mais próximo. Converte o
+  // clientX em fração da área de plotagem e arredonda para o dia inteiro — o
+  // popover gruda no dia (o dado é diário; não há sentido interpolar).
+  const scrub = useCallback(
+    (clientX: number) => {
+      const svg = svgRef.current;
+      if (!svg || !g) return;
+      const rect = svg.getBoundingClientRect();
+      const escala = rect.width / W; // viewBox → px
+      const xView = (clientX - rect.left) / escala; // px → viewBox
+      const frac = (xView - PAD_L) / PLOT_W;
+      const n = pontos.length;
+      const idx = Math.max(0, Math.min(n - 1, Math.round(frac * (n - 1))));
+      setAtivo(idx);
+    },
+    [g, pontos.length],
+  );
+
   if (!g) return null;
+
+  // Geometria do popover no ativo (coordenadas viewBox → % do container, para
+  // o overlay HTML herdar o estilo tokenizado do design system — igual ao
+  // componente do Figma, sem redesenhar em SVG).
+  const overlay = ativo != null ? (() => {
+    const p = g.pts[ativo];
+    const ponto = pontos[ativo];
+    // Conector e dot ficam no ponto real (px/py). Só o CARD é limitado a uma
+    // faixa central (12%–88%) para a pílula não sangrar nas bordas quando o
+    // dedo está nos extremos do mês — o conector continua apontando o valor.
+    const leftPontoPct = (p.px / W) * 100;
+    const leftCardPct = Math.max(12, Math.min(88, leftPontoPct));
+    const topoConectorPct = ((p.py - CONECTOR) / H) * 100;
+    return { leftCardPct, topoConectorPct, px: p.px, py: p.py, saldo: ponto.saldo, dia: ponto.dia };
+  })() : null;
 
   return (
     <div
@@ -123,12 +173,21 @@ export function GraficoFluxoDoMes({ pontos }: Props) {
         padding: 'var(--space-lg)',
       }}
     >
+      {/* Wrapper que casa exatamente com a caixa renderizada do SVG (sem padding
+          próprio), para o popover HTML se posicionar em % da mesma caixa. */}
+      <div style={{ position: 'relative' }}>
       <svg
+        ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
         role="img"
         aria-label="Saldo em conta ao longo dos dias do mês"
-        style={{ display: 'block', overflow: 'visible' }}
+        style={{ display: 'block', overflow: 'visible', touchAction: 'none' }}
+        onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); scrub(e.clientX); }}
+        onPointerMove={(e) => { if (ativo != null) scrub(e.clientX); }}
+        onPointerUp={() => setAtivo(null)}
+        onPointerCancel={() => setAtivo(null)}
+        onPointerLeave={() => setAtivo(null)}
       >
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
@@ -186,7 +245,8 @@ export function GraficoFluxoDoMes({ pontos }: Props) {
           strokeLinejoin="round"
         />
 
-        {/* Pontos marcados nos dias do eixo X */}
+        {/* Pontos marcados nos dias do eixo X (some o do dia ativo — o dot de
+            scrubbing o substitui) */}
         {g.marcos.map((m) => (
           <circle
             key={m.dia}
@@ -212,7 +272,67 @@ export function GraficoFluxoDoMes({ pontos }: Props) {
             {m.dia}
           </text>
         ))}
+
+        {/* ── Scrubbing: conector vertical + dot no ponto ativo. O conector
+            (40px) liga o ponto ao popover HTML acima; fica dentro do SVG para
+            acompanhar a curva na mesma escala. ── */}
+        {overlay && (
+          <>
+            <line
+              x1={overlay.px}
+              y1={overlay.py - CONECTOR}
+              x2={overlay.px}
+              y2={overlay.py}
+              stroke="var(--accent-default)"
+              strokeWidth={1.5}
+            />
+            <circle
+              cx={overlay.px}
+              cy={overlay.py}
+              r={4.5}
+              fill="var(--accent-default)"
+              stroke="var(--bg-surface)"
+              strokeWidth={2}
+            />
+          </>
+        )}
       </svg>
+
+      {/* ── Popover HTML sobreposto: pílula com o saldo do dia, ancorada pelo
+          seu rodapé no topo do conector (40px acima do ponto). Estilo direto do
+          design system (accent/subtle + borda accent/default + radius-lg),
+          espelhando o componente do Figma. translateX(-50%) centraliza na
+          coluna do dia. ── */}
+      {overlay && (
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            left: `${overlay.leftCardPct}%`,
+            top: `${overlay.topoConectorPct}%`,
+            transform: 'translate(-50%, -100%)',
+            pointerEvents: 'none',
+            zIndex: 2,
+            // Não deixa a pílula sangrar nas bordas do gráfico.
+            maxWidth: '100%',
+          }}
+        >
+          <div
+            className="type-body-small-strong"
+            style={{
+              background: 'var(--accent-subtle)',
+              border: '1.5px solid var(--accent-default)',
+              borderRadius: 'var(--radius-lg)',
+              padding: '14px 16px',
+              color: 'var(--text-primary)',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {formatarBR(overlay.saldo, { prefixo: true })}
+          </div>
+        </div>
+      )}
+      </div>
     </div>
   );
 }
