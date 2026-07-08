@@ -63,8 +63,10 @@ export function CriarEditarCartao({ cartao, contas, onVoltar, onSalvou }: Props)
   const contaSel = correntes.find((c) => c.id === contaId) ?? null;
 
   // Previsão é opcional (§4.4): sem valor → null (cartão só acumula o realizado,
-  // sem barra). Só entra no cálculo quando o usuário digita algo.
-  const temPrevisao = digitos !== '';
+  // sem barra). Só entra no cálculo quando o usuário digita algo. Dígitos só de
+  // zero ('', '0', '00'…) contam como sem previsão — assim dá para esvaziar o
+  // campo de volta ao estado "sem previsão" e nunca fica preso numa meta R$ 0.
+  const temPrevisao = digitos.replace(/0/g, '') !== '';
   const previsao = temPrevisao ? centavosParaReais(digitos) : null;
   const podeSalvar =
     nome.trim().length > 0 && fechaDia !== '' && venceDia !== '' && contaId !== null && !salvando;
@@ -129,7 +131,13 @@ export function CriarEditarCartao({ cartao, contas, onVoltar, onSalvou }: Props)
           </span>
           <input
             value={temPrevisao ? `R$ ${formatarBR(previsao ?? 0)}` : ''}
-            onChange={(e) => setDigitos(e.target.value.replace(/\D/g, '').slice(0, 12))}
+            onChange={(e) => {
+              // Só dígitos; zeros à esquerda caem fora. Se sobrar vazio (ou só
+              // zeros), o campo volta ao estado "sem previsão" — permite apagar
+              // de volta a vazio sem ficar preso numa meta R$ 0 (§3.2/§4.4).
+              const so = e.target.value.replace(/\D/g, '').replace(/^0+/, '').slice(0, 12);
+              setDigitos(so);
+            }}
             inputMode="numeric"
             placeholder="Sem previsão"
             aria-label="Previsão mensal em reais"
