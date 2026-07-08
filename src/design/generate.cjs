@@ -4,6 +4,11 @@ const path = require('path');
 const T = JSON.parse(fs.readFileSync(path.join(__dirname, 'tokens.json'), 'utf8'));
 const prim = T.primitives;
 
+// Saídas: tokens.ts fica ao lado da fonte (é importado de src/design); a folha
+// de estilo vai para src/styles/tokens.css, que é a de fato importada em main.tsx.
+const OUT_CSS = path.join(__dirname, '..', 'styles', 'tokens.css');
+const OUT_TS = path.join(__dirname, 'tokens.ts');
+
 // resolve an alias-or-hex to a literal hex
 const lit = (v) => v.startsWith('#') ? v : prim[v];
 // CSS custom-prop name from a token path: "bar/ok" -> "--bar-ok"
@@ -47,7 +52,7 @@ for (const [slug, t] of Object.entries(T.typography)) {
   css += `.type-${slug} { font-family: ${t.family}, system-ui, sans-serif; font-weight: ${t.weight}; font-size: ${t.size}px; line-height: ${t.lineHeight}%; }\n`;
 }
 
-fs.writeFileSync(path.join(__dirname, 'tokens.css'), css);
+fs.writeFileSync(OUT_CSS, css);
 
 // ---------- tokens.ts ----------
 const themeKeys = Object.keys(T.themes).filter(k => !k.startsWith('$'));
@@ -81,6 +86,6 @@ for (const k of typoKeys) {
 }
 ts += `};\n`;
 
-fs.writeFileSync(path.join(__dirname, 'tokens.ts'), ts);
+fs.writeFileSync(OUT_TS, ts);
 
-console.log('Generated tokens.css (' + css.split('\n').length + ' lines) and tokens.ts');
+console.log('Generated ' + path.relative(process.cwd(), OUT_CSS) + ' (' + css.split('\n').length + ' lines) and ' + path.relative(process.cwd(), OUT_TS));

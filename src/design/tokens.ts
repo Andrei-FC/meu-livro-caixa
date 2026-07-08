@@ -38,7 +38,8 @@ export type TypeStyle =
   | "label"
   | "caption"
   | "numeric"
-  | "micro";
+  | "micro"
+  | "micro-strong";
 
 export const TYPOGRAPHY: Record<TypeStyle, { family: string; weight: number; size: number; lineHeight: number }> = {
   "display": { family: "Inter", weight: 700, size: 32, lineHeight: 110 },
@@ -51,4 +52,5 @@ export const TYPOGRAPHY: Record<TypeStyle, { family: string; weight: number; siz
   "caption": { family: "Inter", weight: 400, size: 12, lineHeight: 130 },
   "numeric": { family: "Inter", weight: 600, size: 16, lineHeight: 130 },
   "micro": { family: "Inter", weight: 500, size: 11, lineHeight: 130 },
+  "micro-strong": { family: "Inter", weight: 700, size: 11, lineHeight: 130 },
 };

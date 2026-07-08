@@ -45,7 +45,9 @@ export function BottomNav({ ativa, onMudar }: Props) {
         borderTop: '1px solid var(--border-subtle)',
       }}
     >
-      {/* Trilho interno com a mesma largura máxima do app (480), centralizado. */}
+      {/* Trilho interno com a mesma largura máxima do app (480), centralizado.
+          Espaçamento reduzido (Figma 2343:4706, v2): sem folga vertical própria —
+          cada aba traz seu pb-4; a barra só reserva a safe-area do iOS. */}
       <div
         role="tablist"
         style={{
@@ -53,7 +55,7 @@ export function BottomNav({ ativa, onMudar }: Props) {
           alignItems: 'stretch',
           width: '100%',
           maxWidth: 480,
-          padding: '4px 20px calc(4px + env(safe-area-inset-bottom))',
+          padding: '0 20px env(safe-area-inset-bottom)',
         }}
       >
         {ABAS.map(({ id, rotulo, Icone }) => {
@@ -65,15 +67,15 @@ export function BottomNav({ ativa, onMudar }: Props) {
               role="tab"
               aria-selected={ativo}
               onClick={() => onMudar(id)}
-              className={ativo ? 'type-body-small-strong' : 'type-body-small'}
+              className={ativo ? 'type-micro-strong' : 'type-micro'}
               style={{
                 flex: '1 1 0',
                 minWidth: 0,
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                gap: 2,
-                padding: '4px 0 0',
+                gap: 0,
+                padding: '0 0 4px',
                 border: 'none',
                 background: 'transparent',
                 color: ativo ? 'var(--accent-default)' : 'var(--text-muted)',
@@ -82,7 +84,7 @@ export function BottomNav({ ativa, onMudar }: Props) {
             >
               <span
                 aria-hidden
-                style={{ display: 'inline-flex', height: 35, alignItems: 'center' }}
+                style={{ display: 'inline-flex', height: 30, alignItems: 'center' }}
               >
                 <Icone tamanho={30} preenchido={ativo} />
               </span>
