@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Header, CardDeEntidade, LinhaDeLancamento, Botao, FazerPagamentoSheet } from '../components';
+import { Header, CardDeEntidade, LinhaDeLancamento, CabecalhoDeDia, Botao, FazerPagamentoSheet } from '../components';
 import {
   ocorrenciasDoCiclo,
   realizadoDoCiclo,
@@ -40,6 +40,10 @@ const MESES = [
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
 ];
 const MESES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const DIAS_SEMANA = [
+  'Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira',
+  'Quinta-feira', 'Sexta-feira', 'Sábado',
+];
 
 /** Date local → ISO YYYY-MM-DD, sem fuso (evita o -1 dia do toISOString). */
 function montaISOLocal(d: Date): string {
@@ -134,8 +138,24 @@ export function CartaoFatura({
       ? `${formatarBR(realizado, { prefixo: true })} de ${formatarBR(previsao!, { prefixo: true })} previstos · ${pct}% da previsão · ${fechaTxt}`
       : fechaTxt;
 
-  // Particiona as ocorrências do ciclo nos três grupos do design.
-  const grupos = useMemo(() => particionar(ocorrencias), [ocorrencias]);
+  // Lista corrida por dia (§5.3, item 2): as compras do ciclo deixam de ser
+  // agrupadas por à vista/parcela/assinatura e passam a ser um extrato ordenado
+  // por data, com cabeçalho de dia — a mesma gramática da aba Lançamentos
+  // ("a data manda", princípio 2). Parcela e recorrência viram detalhe da linha
+  // (selo "3/12" / ícone de coleção), não critério de agrupamento. Ordena
+  // crescente para ler como extrato; agrupa em Map<dia, ocorrências>.
+  const gruposPorDia = useMemo(() => {
+    const ordenadas = [...ocorrencias].sort((a, b) => a.data.localeCompare(b.data));
+    const porDia = new Map<string, OcorrenciaLancamento[]>();
+    for (const o of ordenadas) {
+      const arr = porDia.get(o.data) ?? porDia.set(o.data, []).get(o.data)!;
+      arr.push(o);
+    }
+    return [...porDia.entries()].map(([dataISO, itens]) => {
+      const [, , dia] = dataISO.split('-').map(Number);
+      return { dataISO, dia, itens };
+    });
+  }, [ocorrencias]);
 
   // Sheet "Fazer Pagamento" (§5.3): só disponível na fase FECHADA.
   const [sheetPagamento, setSheetPagamento] = useState(false);
@@ -198,7 +218,7 @@ export function CartaoFatura({
           legenda={legenda}
         />
 
-        {grupos.avista.length === 0 && grupos.parcelas.length === 0 && grupos.assinaturas.length === 0 ? (
+        {gruposPorDia.length === 0 ? (
           <p
             className="type-caption"
             style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-xl) 0' }}
@@ -206,11 +226,40 @@ export function CartaoFatura({
             Nenhuma compra neste ciclo.
           </p>
         ) : (
-          <>
-            <Secao titulo="COMPRAS DO CICLO" itens={grupos.avista} onEditar={onEditar} />
-            <Secao titulo="PARCELAS" itens={grupos.parcelas} onEditar={onEditar} comParcela />
-            <Secao titulo="ASSINATURAS" itens={grupos.assinaturas} onEditar={onEditar} />
-          </>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+            {gruposPorDia.map(({ dataISO, dia, itens }) => {
+              // dia da semana a partir da data ISO (constrói local, sem fuso).
+              const [a, m, d] = dataISO.split('-').map(Number);
+              const diaSemana = DIAS_SEMANA[new Date(a, m - 1, d).getDay()];
+              return (
+                <div key={dataISO} style={{ display: 'flex', flexDirection: 'column' }}>
+                  <CabecalhoDeDia data={`${dia} ${MESES_CURTO[m - 1]}`} diaSemana={diaSemana} />
+                  <div
+                    style={{
+                      borderRadius: 'var(--radius-lg)',
+                      overflow: 'hidden',
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-default)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                    }}
+                  >
+                    {itens.map((o) => (
+                      <LinhaDeLancamento
+                        key={o.id}
+                        tipo="saida"
+                        descricao={o.descricao}
+                        valor={-o.valor}
+                        parcela={o.total != null ? { indice: o.indice, total: o.total } : undefined}
+                        recorrente={o.repeticao === 'recorrente'}
+                        onEditar={() => onEditar(o)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </main>
 
@@ -256,67 +305,3 @@ export function CartaoFatura({
   );
 }
 
-/* ───────── Seção: rótulo + card branco de linhas ───────── */
-
-function Secao({
-  titulo,
-  itens,
-  onEditar,
-  comParcela = false,
-}: {
-  titulo: string;
-  itens: OcorrenciaLancamento[];
-  onEditar: (o: OcorrenciaLancamento) => void;
-  comParcela?: boolean;
-}) {
-  if (itens.length === 0) return null;
-  return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
-      <div style={{ padding: '4px var(--space-xs) 2px' }}>
-        <span className="type-label" style={{ color: 'var(--text-muted)' }}>
-          {titulo}
-        </span>
-      </div>
-      <div
-        style={{
-          borderRadius: 'var(--radius-lg)',
-          overflow: 'hidden',
-          background: 'var(--bg-surface)',
-          border: '1px solid var(--border-default)',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        {itens.map((o) => (
-          <LinhaDeLancamento
-            key={o.id}
-            tipo="saida"
-            descricao={comParcela && o.total ? `${o.descricao} (${o.indice}/${o.total})` : o.descricao}
-            valor={-o.valor}
-            onEditar={() => onEditar(o)}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/* ───────── Partição em à vista · parcelas · assinaturas ───────── */
-
-function particionar(ocorrencias: OcorrenciaLancamento[]): {
-  avista: OcorrenciaLancamento[];
-  parcelas: OcorrenciaLancamento[];
-  assinaturas: OcorrenciaLancamento[];
-} {
-  const avista: OcorrenciaLancamento[] = [];
-  const parcelas: OcorrenciaLancamento[] = [];
-  const assinaturas: OcorrenciaLancamento[] = [];
-  for (const o of ocorrencias) {
-    // Assinatura é recorte de série (§5.5): recorrente marcada. Tem prioridade
-    // de agrupamento sobre "recorrente comum".
-    if (o.assinatura) assinaturas.push(o);
-    else if (o.total != null) parcelas.push(o); // série finita (parcela) → tem N total
-    else avista.push(o); // à vista (e recorrente não-assinatura cai como compra do ciclo)
-  }
-  return { avista, parcelas, assinaturas };
-}
