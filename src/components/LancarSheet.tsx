@@ -337,6 +337,10 @@ export function LancarSheet({
 
           {ehTransferencia && (
             <>
+              {/* Data — "a data manda" (princípio 2) também na transferência:
+                  define o mês em que o depósito/retirada pesa no saldo (§4.5). */}
+              <CampoData valor={data} onMudar={setData} />
+
               <CampoSeletor
                 label="Conta Saída"
                 valor={origemSel?.nome ?? 'Selecionar'}
