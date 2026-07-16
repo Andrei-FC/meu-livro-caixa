@@ -1,4 +1,4 @@
-import { IconeNavLancamentos, IconeNavRelatorio, IconeCreditCard, IconeCash } from '../icons';
+import { IconeNavLancamentos, IconeNavRelatorio, IconeNavCartoes, IconeNavCarteira } from '../icons';
 
 /**
  * BottomNav — navegação principal (§5.1). Barra fixa embaixo, alcance de polegar.
@@ -20,8 +20,8 @@ const ABAS: {
   Icone: (p: { tamanho?: number; preenchido?: boolean }) => React.ReactElement;
 }[] = [
   { id: 'lancamentos', rotulo: 'Lançamentos', Icone: IconeNavLancamentos },
-  { id: 'cartoes', rotulo: 'Cartões', Icone: ({ tamanho }) => <IconeCreditCard tamanho={tamanho} /> },
-  { id: 'contas', rotulo: 'Contas', Icone: ({ tamanho }) => <IconeCash tamanho={tamanho} /> },
+  { id: 'cartoes', rotulo: 'Cartões', Icone: IconeNavCartoes },
+  { id: 'contas', rotulo: 'Contas', Icone: IconeNavCarteira },
   { id: 'relatorio', rotulo: 'Relatório', Icone: IconeNavRelatorio },
 ];
 
