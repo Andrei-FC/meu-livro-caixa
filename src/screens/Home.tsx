@@ -880,7 +880,14 @@ function SecaoCarteira({ titulo, children, vazio }: { titulo: string; children: 
           {vazio}
         </p>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>{children}</div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {arr.map((filho, i) => (
+            <div key={i}>
+              {i > 0 && <div style={{ height: 1, background: 'var(--border-default)', margin: 'var(--space-md) 0' }} />}
+              {filho}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

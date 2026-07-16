@@ -142,8 +142,8 @@ function ContaCompacta({ nome, valor, tema, banco, entradas, saidas }: ContaProp
         </div>
       </div>
 
-      {/* Entradas / Saídas empilhadas */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+      {/* Entradas / Saídas empilhadas, alinhadas à direita */}
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8, flexShrink: 0, textAlign: 'right' }}>
         <MiniCarteira rotulo="Entradas" cor="var(--value-entrada)" texto={formatarBR(entradas, { sinal: '+' })} />
         <MiniCarteira rotulo="Saídas" cor="var(--value-saida)" texto={formatarBR(-Math.abs(saidas))} />
       </div>
@@ -152,10 +152,10 @@ function ContaCompacta({ nome, valor, tema, banco, entradas, saidas }: ContaProp
 }
 
 /** Bloco Entradas/Saídas da conta compacta: rótulo micro-strong muted + valor
- *  body-small-strong colorido. Difere do `Mini` (que usa type-micro/muted). */
+ *  body-small-strong colorido, alinhados à direita. */
 function MiniCarteira({ rotulo, cor, texto }: { rotulo: string; cor: string; texto: string }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
       <span className="type-micro-strong" style={{ color: 'var(--text-muted)' }}>{rotulo}</span>
       <span className="type-body-small-strong" style={{ color: cor }}>{texto}</span>
     </div>
@@ -227,13 +227,16 @@ function Cartao(props: CartaoProps) {
       tabIndex={abridor.tabIndex}
       onKeyDown={abridor.onKeyDown}
     >
-      {/* Bloco temático contido: logo/bandeira · nome · valor · barra */}
+      {/* Bloco temático contido, altura fixa (parece cartão): topo no topo, base
+          na base. Sem barra, o texto desce ocupando o lugar dela. */}
       <div
         data-card-theme={tema}
         style={{
           display: 'flex',
           flexDirection: 'column',
-          gap: 12,
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          height: 145,
           padding: 12,
           borderRadius: 16,
           background: 'var(--theme-bg)',
@@ -242,19 +245,22 @@ function Cartao(props: CartaoProps) {
           minWidth: 0,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
           <SlotLogo banco={banco} />
           <SlotBandeira bandeira={bandeira} />
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          <span className="type-body-strong" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
-          <span className="type-title">{formatarBR(valor, { prefixo: true })}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%', minWidth: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <span className="type-body-strong" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
+            <span className="type-title">{formatarBR(valor, { prefixo: true })}</span>
+          </div>
+          <BarraDePrevisao realizado={realizado} previsao={previsao} />
         </div>
-        <BarraDePrevisao realizado={realizado} previsao={previsao} />
       </div>
 
-      {/* Coluna direita: tag + evento + previsto restante — fundo neutro. */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', alignSelf: 'stretch', gap: 8, flexShrink: 0 }}>
+      {/* Coluna direita: tag + evento (topo) · previsto restante (base) — fundo
+          neutro, tudo alinhado à direita. */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', alignSelf: 'stretch', gap: 8, flexShrink: 0, textAlign: 'right' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
           <TagFase fase={fase} tema={tema} />
           <span className="type-label" style={{ color: 'var(--text-primary)', opacity: 0.7 }}>{eventoTexto}</span>
@@ -264,7 +270,7 @@ function Cartao(props: CartaoProps) {
             <span className="type-micro-strong" style={{ color: 'var(--text-muted)' }}>
               {acima ? 'Acima da previsão' : 'Previsto Restante'}
             </span>
-            <span className="type-label" style={{ color: acima ? 'var(--value-saida)' : 'var(--text-primary)', opacity: acima ? 1 : 0.7 }}>
+            <span className="type-body-strong" style={{ color: acima ? 'var(--value-saida)' : 'var(--text-primary)', opacity: acima ? 1 : 0.7 }}>
               {formatarBR(restante, { prefixo: true })}
             </span>
           </div>
@@ -292,7 +298,7 @@ function TagFase({ fase, tema }: { fase: 'aberta' | 'fechada'; tema?: string }) 
         color: fechada ? 'var(--theme-text)' : 'var(--text-secondary)',
       }}
     >
-      {fechada ? 'FATURA FECHADA' : 'FATURA ABERTA'}
+      {fechada ? 'FECHADA' : 'ABERTA'}
     </span>
   );
 }
