@@ -238,6 +238,13 @@ export function Home() {
     return m;
   }, [cartoes, lancamentos, hoje, indiceExcecoes, indicePagamentos]);
 
+  // Ordem dos cartões na Carteira: por dia de vencimento (dia_pagamento) crescente
+  // — o mais próximo do início do mês no topo. Estável (desempata por nome).
+  const cartoesOrdenados = useMemo(
+    () => [...cartoes].sort((a, b) => a.dia_pagamento - b.dia_pagamento || a.nome.localeCompare(b.nome)),
+    [cartoes],
+  );
+
   // Relatório (§5.5, §4.8) — eixo de CONSUMO, pela data da compra. Usa
   // ocorrenciasDoMes (TODAS, inclusive cartão): a compra de cartão conta na sua
   // categoria no mês da compra, não some para dentro da fatura (o oposto da
@@ -589,7 +596,7 @@ export function Home() {
                 {/* CARTÕES (§5.5 Figma "Home — Cartões": cartões e contas na mesma
                     tela, cada bloco com sua testeira). */}
                 <SecaoCarteira titulo="CARTÕES" vazio="Nenhum cartão cadastrado.">
-                  {cartoes.map((k) => {
+                  {cartoesOrdenados.map((k) => {
                     const st = statusCarteira.get(k.id);
                     if (!st) return null;
                     return (

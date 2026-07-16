@@ -227,8 +227,8 @@ function Cartao(props: CartaoProps) {
       tabIndex={abridor.tabIndex}
       onKeyDown={abridor.onKeyDown}
     >
-      {/* Bloco temático contido, altura fixa (parece cartão): topo no topo, base
-          na base. Sem barra, o texto desce ocupando o lugar dela. */}
+      {/* Bloco temático contido, tamanho FIXO (parece cartão): 231×145. Topo no
+          topo, base na base; sem barra, o texto desce ocupando o lugar dela. */}
       <div
         data-card-theme={tema}
         style={{
@@ -236,13 +236,14 @@ function Cartao(props: CartaoProps) {
           flexDirection: 'column',
           justifyContent: 'space-between',
           alignItems: 'center',
+          width: 231,
           height: 145,
           padding: 12,
           borderRadius: 16,
           background: 'var(--theme-bg)',
           color: 'var(--theme-text)',
-          flex: '1 1 0',
-          minWidth: 0,
+          flexShrink: 0,
+          boxSizing: 'border-box',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
@@ -259,8 +260,8 @@ function Cartao(props: CartaoProps) {
       </div>
 
       {/* Coluna direita: tag + evento (topo) · previsto restante (base) — fundo
-          neutro, tudo alinhado à direita. */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', alignSelf: 'stretch', gap: 8, flexShrink: 0, textAlign: 'right' }}>
+          neutro, largura fixa, tudo alinhado à direita. */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', alignSelf: 'stretch', width: 96, flexShrink: 0, textAlign: 'right' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
           <TagFase fase={fase} tema={tema} />
           <span className="type-label" style={{ color: 'var(--text-primary)', opacity: 0.7 }}>{eventoTexto}</span>
