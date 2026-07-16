@@ -638,8 +638,11 @@ export function faseCarteiraDoCiclo(
   if (cicloAbs < cicloAberto) {
     const pos = posicaoFatura(cartao, cicloAbs, pagamentos);
     const vencAbs = pos.mesAbs;
-    const antesOuNoVenc = hojeAbs < vencAbs || (hojeAbs === vencAbs && hoje.getDate() <= pos.dia);
-    if (antesOuNoVenc) {
+    // FECHADA-pendente enquanto hoje está ANTES do vencimento. No PRÓPRIO dia do
+    // vencimento (efetivo, se pago; ou padrão) a fatura já sai do radar e o ciclo
+    // vira aberto — pagar hoje vira a fase hoje, não amanhã. (§5.6)
+    const antesDoVenc = hojeAbs < vencAbs || (hojeAbs === vencAbs && hoje.getDate() < pos.dia);
+    if (antesDoVenc) {
       return { fase: 'fechada', diaEvento: pos.dia, mesEvento: vencAbs % 12 };
     }
   }
