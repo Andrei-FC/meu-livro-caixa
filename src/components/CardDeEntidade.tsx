@@ -1,5 +1,5 @@
 import { BarraDePrevisao } from './BarraDePrevisao';
-import { formatarBR } from '../lib/formato';
+import { formatarBR, diaMesCurto } from '../lib/formato';
 import { IconeImage, LogoBanco, LogoBandeira, ICONES_POUPANCA } from '../icons';
 
 /**
@@ -29,8 +29,18 @@ type CartaoProps = Base & {
   previsao: number | null;
   /** Chave da bandeira (§4.9), opcional. */
   bandeira?: string | null;
-  /** Legenda já montada (ex.: "29% da previsão · fecha 30 jun"). */
-  legenda: string;
+  /** MODELO CARTEIRA (§5.6): fase do ciclo mostrado + evento. Presente = renderiza
+   *  tag ("FATURA ABERTA/FECHADA") + "fecha/vence DD mmm" + Previsto Restante.
+   *  Ausente = MODELO LEGENDA (drill-down/gerenciar): usa `legenda` livre.
+   *  Dívida temporária: os dois modelos coexistem até o card grande migrar. */
+  fase?: 'aberta' | 'fechada';
+  /** Dia do evento (fechamento se aberta, vencimento se fechada). Com `fase`. */
+  diaEvento?: number;
+  /** Mês do evento (0-11). Com `fase`. */
+  mesEvento?: number;
+  /** MODELO LEGENDA: linha livre (ex.: "Previsão R$ X · fecha dia N"). Usado
+   *  quando `fase` está ausente. */
+  legenda?: string;
   /** Se presente, o card inteiro abre o drill-down ao tocar (§5.3). */
   onAbrir?: () => void;
 };
@@ -96,41 +106,117 @@ function ComTesteira(props: ContaProps | PoupancaProps | CofreProps) {
   );
 }
 
-function Cartao({ nome, valor, tema, realizado, previsao, legenda, banco, bandeira, onAbrir }: CartaoProps) {
-  return (
-    <div
-      style={{
-        ...CARD,
-        padding: '18px 20px',
-        gap: 14,
-        background: 'var(--theme-bg)',
-        color: 'var(--theme-text)',
-        cursor: onAbrir ? 'pointer' : undefined,
-      }}
-      data-card-theme={tema}
-      onClick={onAbrir}
-      role={onAbrir ? 'button' : undefined}
-      tabIndex={onAbrir ? 0 : undefined}
-      onKeyDown={onAbrir ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAbrir(); } } : undefined}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-          <SlotLogo banco={banco} />
-          <span className="type-numeric">{nome}</span>
-        </span>
-        <SlotBandeira bandeira={bandeira} />
+function Cartao(props: CartaoProps) {
+  const { nome, valor, tema, realizado, previsao, banco, bandeira, onAbrir } = props;
+  const modeloCarteira = props.fase != null;
+
+  const abridor = onAbrir
+    ? {
+        onClick: onAbrir,
+        role: 'button' as const,
+        tabIndex: 0,
+        onKeyDown: (e: React.KeyboardEvent) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAbrir(); }
+        },
+        style: { cursor: 'pointer' as const },
+      }
+    : {};
+
+  const shell: React.CSSProperties = {
+    ...CARD,
+    padding: '18px 20px',
+    gap: 14,
+    background: 'var(--theme-bg)',
+    color: 'var(--theme-text)',
+    ...(abridor.style ?? {}),
+  };
+
+  // MODELO LEGENDA (drill-down / gerenciar): layout vertical original.
+  if (!modeloCarteira) {
+    return (
+      <div style={shell} data-card-theme={tema} onClick={abridor.onClick} role={abridor.role} tabIndex={abridor.tabIndex} onKeyDown={abridor.onKeyDown}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+            <SlotLogo banco={banco} />
+            <span className="type-numeric">{nome}</span>
+          </span>
+          <SlotBandeira bandeira={bandeira} />
+        </div>
+        <span className="type-display">{formatarBR(valor, { prefixo: true })}</span>
+        <BarraDePrevisao
+          realizado={realizado}
+          previsao={previsao}
+          rotulo={previsao != null ? `${formatarBR(realizado)} de ${formatarBR(previsao)} previstos` : undefined}
+        />
+        <span className="type-label">{props.legenda}</span>
       </div>
+    );
+  }
 
-      <span className="type-display">{formatarBR(valor, { prefixo: true })}</span>
+  // MODELO CARTEIRA (§5.6): duas colunas, tag de fase + evento + Previsto Restante.
+  const fase = props.fase!;
+  const diaEvento = props.diaEvento!;
+  const mesEvento = props.mesEvento!;
+  const temPrev = previsao != null && previsao > 0;
+  const acima = temPrev && realizado > previsao!;
+  const restante = temPrev ? Math.abs(realizado - previsao!) : 0;
+  const eventoTexto = `${fase === 'fechada' ? 'vence' : 'fecha'} ${diaMesCurto(diaEvento, mesEvento)}`;
 
-      <BarraDePrevisao
-        realizado={realizado}
-        previsao={previsao}
-        rotulo={previsao != null ? `${formatarBR(realizado)} de ${formatarBR(previsao)} previstos` : undefined}
-      />
+  return (
+    <div style={shell} data-card-theme={tema} onClick={abridor.onClick} role={abridor.role} tabIndex={abridor.tabIndex} onKeyDown={abridor.onKeyDown}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        {/* Esquerda: identidade + valor + barra */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: '1 1 0', minWidth: 0 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+            <SlotLogo banco={banco} />
+            <SlotBandeira bandeira={bandeira} />
+          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            <span className="type-micro-strong" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
+            <span className="type-numeric">{formatarBR(valor, { prefixo: true })}</span>
+          </div>
+          <BarraDePrevisao realizado={realizado} previsao={previsao} />
+        </div>
 
-      <span className="type-label">{legenda}</span>
+        {/* Direita: tag de fase + evento + previsto restante */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8, flexShrink: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+            <TagFase fase={fase} />
+            <span className="type-label" style={{ opacity: 0.7 }}>{eventoTexto}</span>
+          </div>
+          {temPrev && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+              <span className="type-micro" style={{ opacity: 0.7 }}>
+                {acima ? 'Acima da previsão' : 'Previsto Restante'}
+              </span>
+              <span className="type-label" style={{ color: acima ? 'var(--value-saida)' : undefined, opacity: acima ? 1 : 0.7 }}>
+                {formatarBR(restante, { prefixo: true })}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
+  );
+}
+
+/** Tag de fase da fatura (§5.6). Fundo bar/track translúcido (imune a tema),
+ *  texto micro-strong. "FATURA ABERTA" | "FATURA FECHADA". */
+function TagFase({ fase }: { fase: 'aberta' | 'fechada' }) {
+  return (
+    <span
+      className="type-micro-strong"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        padding: '6px 10px',
+        borderRadius: 'var(--radius-sm)',
+        background: 'var(--bar-track)',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {fase === 'fechada' ? 'FATURA FECHADA' : 'FATURA ABERTA'}
+    </span>
   );
 }
 

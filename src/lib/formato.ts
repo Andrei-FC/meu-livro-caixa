@@ -24,6 +24,11 @@ export function formatarBR(valor: number, opts: FormatoOpts = {}): string {
 
 const MESES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
+/** Dia + mês curto: (30, 5) → "30 jun". Mês 0-11. Para legendas de ciclo (§5.6). */
+export function diaMesCurto(dia: number, mes: number): string {
+  return `${dia} ${MESES_CURTO[mes] ?? ''}`;
+}
+
 /** Data ISO (YYYY-MM-DD) → "23 jun 2026". Fonte única para linhas de histórico. */
 export function dataCurta(iso: string): string {
   const [ano, mes, dia] = iso.split('-').map(Number);

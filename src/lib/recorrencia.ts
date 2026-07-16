@@ -588,6 +588,82 @@ export function intervaloPagamento(
   return { min, maxExclusivo };
 }
 
+/** Status do cartão na aba CARTEIRA (§5.6) — a "foto do presente" do ciclo, não
+ *  do mês exibido. Diferente da lista da Home (eixo fluxo de caixa, pela data de
+ *  pagamento): aqui a pergunta é "qual fatura está viva AGORA".
+ *
+ *  Regra (travada em sessão): duas fases, uma virada governada por hoje-vs-dia
+ *  de vencimento (§4.8). Não existe "atrasado" no modelo — o dia de vencimento
+ *  (padrão pelo `dia_pagamento`, ou efetivo se há `data_paga` em
+ *  `cartoes_pagamentos`) É o pagamento na cabeça do app; passou dele, a fatura
+ *  saiu do fluxo:
+ *   - FECHADA (obrigação pendente): o ciclo anterior já fechou e hoje ainda não
+ *     passou do seu vencimento → mostra o consolidado a pagar ("vence DD mmm").
+ *   - ABERTA (acumulando): não há fechada pendente → mostra o ciclo corrente
+ *     enchendo ("fecha DD mmm"). Antecipar o pagamento (registrar `data_paga`
+ *     anterior) adianta o vencimento efetivo via posicaoFatura, então a virada
+ *     fechada→aberta acontece na data registrada, de graça.
+ *
+ *  `realizado` é sempre o realizado do ciclo mostrado. `previsao` é a mensal do
+ *  cartão (null = sem previsão → sem barra, só acumula). */
+export type StatusCarteira = {
+  cicloAbs: number;
+  fase: 'aberta' | 'fechada';
+  realizado: number;
+  previsao: number | null;
+  /** Dia+mês do evento relevante: fechamento (fase aberta) ou vencimento
+   *  efetivo/padrão (fase fechada). Para a legenda "fecha/vence DD mmm". */
+  diaEvento: number;
+  mesEvento: number; // 0-11
+};
+
+export function statusCarteiraDoCartao(
+  lancamentos: Lancamento[],
+  cartao: Cartao,
+  hoje: Date,
+  excecoes?: IndiceExcecoes,
+  pagamentos?: IndicePagamentos,
+): StatusCarteira {
+  const cicloAberto = cicloDeFechamentoAbs(
+    montaISO(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()),
+    cartao.dia_fechamento,
+  );
+  const cicloAnterior = cicloAberto - 1;
+  const hojeAbs = indiceMes(hoje.getFullYear(), hoje.getMonth());
+
+  // O ciclo anterior já fechou (sempre, por definição — cicloAberto é o corrente).
+  // Ele é uma obrigação pendente enquanto hoje ≤ dia de vencimento (efetivo ou
+  // padrão). posicaoFatura resolve os dois casos.
+  if (cicloAnterior >= 0) {
+    const pos = posicaoFatura(cartao, cicloAnterior, pagamentos);
+    const vencAbs = pos.mesAbs;
+    // hoje ≤ vencimento → fatura ainda vai pesar; é a fechada a mostrar.
+    const antesOuNoVenc = hojeAbs < vencAbs || (hojeAbs === vencAbs && hoje.getDate() <= pos.dia);
+    if (antesOuNoVenc) {
+      return {
+        cicloAbs: cicloAnterior,
+        fase: 'fechada',
+        realizado: realizadoDoCiclo(lancamentos, cartao, cicloAnterior, hoje, excecoes),
+        previsao: cartao.previsao_mensal,
+        diaEvento: pos.dia,
+        mesEvento: vencAbs % 12,
+      };
+    }
+  }
+
+  // Sem fechada pendente: o ciclo corrente, aberto, acumulando.
+  const anoF = Math.floor(cicloAberto / 12);
+  const mesF = cicloAberto % 12;
+  return {
+    cicloAbs: cicloAberto,
+    fase: 'aberta',
+    realizado: realizadoDoCiclo(lancamentos, cartao, cicloAberto, hoje, excecoes),
+    previsao: cartao.previsao_mensal,
+    diaEvento: diaAncoraNoMes(cartao.dia_fechamento, anoF, mesF),
+    mesEvento: mesF,
+  };
+}
+
 // ───────── Saldo contínuo (§4.7) ─────────
 //
 // O saldo rola de um mês para o seguinte: saldo(M) = herdado(M) + líquido(M),

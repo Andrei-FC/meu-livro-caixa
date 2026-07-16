@@ -11,6 +11,7 @@ import {
   faturaNoMes,
   realizadoDoCiclo,
   faseDoCiclo,
+  statusCarteiraDoCartao,
   diaPagamentoNoMes,
   posicaoFatura,
   saldoAcumuladoPorConta,
@@ -224,19 +225,18 @@ export function Home() {
     return m;
   }, [cartoes, lancamentos, ano, mes, hoje, indiceExcecoes, indicePagamentos]);
 
-  // Realizado do ciclo que VENCE no mês exibido, por cartão — para o display da
-  // linha de fatura (o "R$ X / previsão"). Deve seguir o mesmo ciclo que
-  // faturaNoMes usa (o que vence neste mês), senão a linha de um mês futuro
-  // mostraria o realizado de outro ciclo. Regra de qual ciclo vence: §4.8.
-  const realizadoPorCartao = useMemo(() => {
-    const alvoAbs = ano * 12 + mes;
-    const m = new Map<string, number>();
+  // Aba CARTEIRA (§5.6) — a "foto do presente" do ciclo, NÃO o mês exibido. Para
+  // cada cartão, o motor decide qual fatura está viva agora: a fechada a pagar
+  // (obrigação pendente até o vencimento) ou a aberta acumulando. A virada é
+  // governada por hoje-vs-vencimento e honra a antecipação de pagamento
+  // (cartoes_pagamentos). Independe da navegação de mês da Home.
+  const statusCarteira = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof statusCarteiraDoCartao>>();
     for (const k of cartoes) {
-      const cicloAbs = k.dia_pagamento > k.dia_fechamento ? alvoAbs : alvoAbs - 1;
-      m.set(k.id, cicloAbs < 0 ? 0 : realizadoDoCiclo(lancamentos, k, cicloAbs, hoje, indiceExcecoes));
+      m.set(k.id, statusCarteiraDoCartao(lancamentos, k, hoje, indiceExcecoes, indicePagamentos));
     }
     return m;
-  }, [cartoes, lancamentos, ano, mes, hoje, indiceExcecoes]);
+  }, [cartoes, lancamentos, hoje, indiceExcecoes, indicePagamentos]);
 
   // Relatório (§5.5, §4.8) — eixo de CONSUMO, pela data da compra. Usa
   // ocorrenciasDoMes (TODAS, inclusive cartão): a compra de cartão conta na sua
@@ -590,24 +590,22 @@ export function Home() {
                     tela, cada bloco com sua testeira). */}
                 <SecaoCarteira titulo="CARTÕES" vazio="Nenhum cartão cadastrado.">
                   {cartoes.map((k) => {
-                    const realizado = realizadoPorCartao.get(k.id) ?? 0;
-                    const temPrev = k.previsao_mensal != null && k.previsao_mensal > 0;
-                    const pct = temPrev ? Math.round((realizado / k.previsao_mensal!) * 100) : 0;
-                    const legenda = temPrev
-                      ? `${pct}% da previsão · fecha dia ${k.dia_fechamento}`
-                      : `fecha dia ${k.dia_fechamento}`;
+                    const st = statusCarteira.get(k.id);
+                    if (!st) return null;
                     return (
                       <CardDeEntidade
                         key={k.id}
                         tipo="cartao"
                         nome={k.nome}
-                        valor={realizado}
+                        valor={st.realizado}
                         tema={k.tema ?? undefined}
                         banco={k.banco}
                         bandeira={k.bandeira}
-                        realizado={realizado}
-                        previsao={k.previsao_mensal}
-                        legenda={legenda}
+                        realizado={st.realizado}
+                        previsao={st.previsao}
+                        fase={st.fase}
+                        diaEvento={st.diaEvento}
+                        mesEvento={st.mesEvento}
                         onAbrir={() => setPagina({ tela: 'drill-cartao', cartao: k })}
                       />
                     );
