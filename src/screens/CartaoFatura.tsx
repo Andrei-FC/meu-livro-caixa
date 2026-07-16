@@ -1,44 +1,37 @@
 import { useMemo, useState } from 'react';
-import { Header, CardDeEntidade, LinhaDeLancamento, CabecalhoDeDia, Botao, FazerPagamentoSheet } from '../components';
+import { Header, CartaoHeroDrillDown, LinhaDeLancamento, CabecalhoDeDia, Botao, FazerPagamentoSheet } from '../components';
 import {
   ocorrenciasDoCiclo,
   realizadoDoCiclo,
-  faseDoCiclo,
+  faseCarteiraDoCiclo,
   intervaloPagamento,
   posicaoFatura,
   type OcorrenciaLancamento,
   type IndiceExcecoes,
   type IndicePagamentos,
 } from '../lib/recorrencia';
-import { formatarBR } from '../lib/formato';
 import type { Cartao, Lancamento } from '../types/db';
 
 /**
- * Cartão — Fatura (drill-down) — §5.3, Figma 2015:113.
- * Aberta ao tocar na Linha de fatura da Home. Página própria (padrão §5.8:
- * Header chuld + conteúdo), sem FAB, COM seletor de mês (Show Date do Header).
+ * Cartão — Fatura (drill-down) — §5.3.
+ * Aberta ao tocar no card do cartão na Carteira, ou na Linha de fatura da Home.
+ * Página própria (Header chuld + conteúdo), sem FAB.
  *
- * Estrutura (do Figma):
- *  1. Header chuld: voltar + nome do cartão + seletor de mês (‹ Mês Ano ›).
- *  2. Hero: INSTÂNCIA do Card de entidade (variante Cartão) — fonte única do
- *     visual do cartão (§4.4/§5.3). Recebe realizado/previsão do ciclo exibido
- *     e herda o tema; a Barra de previsão e a legenda vêm do próprio componente.
- *  3. Compras do ciclo, agrupadas: COMPRAS DO CICLO (à vista) · PARCELAS ·
- *     ASSINATURAS. Cada grupo é um card branco de Linhas de lançamento, sem tag
- *     de conta (todas são deste cartão — §4.8).
+ * Estrutura:
+ *  1. Header chuld: voltar + nome do cartão + seletor de CICLO (‹ Fatura de mmm ›).
+ *  2. Hero: CartaoHeroDrillDown — mesmas informações do card compacto da Carteira
+ *     (§5.6), layout próprio (largura cheia, altura que abraça o conteúdo).
+ *  3. Compras do ciclo: extrato corrido por dia (CabeçalhoDeDia + linhas).
  *
- * NAVEGAÇÃO DE MÊS. O drill-down abre no mês em que a linha da fatura foi
- * tocada (anoInicial/mesInicial vindos da Home) e navega mês a mês. O ciclo
- * exibido é o que VENCE no mês selecionado (mesma regra da linha na Home,
- * §4.8): fatura que vence em M fecha em M se dia_pagamento > dia_fechamento,
- * senão em M−1. Assim o que o usuário vê aqui bate exatamente com a linha que
- * ele tocou. Realizado, fase e ocorrências saem todos do motor (fonte única).
+ * NAVEGAÇÃO POR CICLO (não por mês). O drill-down abre no ciclo que a coisa
+ * clicada representa (cicloInicial) — o card da Carteira passa o ciclo vivo; a
+ * linha de fatura passa o ciclo que vence naquele mês — e navega ciclo-a-ciclo.
+ * A fase de cada ciclo (aberta/fechada) espelha a régua da Carteira
+ * (faseCarteiraDoCiclo): fechada enquanto obrigação pendente, aberta senão.
+ * O rótulo do header é sempre "Fatura de <mês de fechamento>" — identidade
+ * estável do ciclo, independente da fase.
  */
 
-const MESES = [
-  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
-  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
-];
 const MESES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 const DIAS_SEMANA = [
   'Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira',
@@ -65,9 +58,10 @@ type Props = {
   /** Pagamentos efetivos por cartão+ciclo (§4.4) — data efetiva sobrepõe o dia_pagamento. */
   pagamentos: IndicePagamentos;
   hoje: Date;
-  /** Mês/ano em que a linha da fatura foi tocada na Home — ponto de partida. */
-  anoInicial: number;
-  mesInicial: number;
+  /** Ciclo (abs) que a coisa clicada representa — o card da Carteira passa o
+   *  ciclo vivo; a linha de fatura da Home passa o ciclo que vence naquele mês.
+   *  O drill-down abre nele e navega ciclo-a-ciclo a partir daí (§5.3). */
+  cicloInicial: number;
   onVoltar: () => void;
   /** Abre o Editar da ocorrência tocada (mesmo fluxo da Home, §5.7). */
   onEditar: (o: OcorrenciaLancamento) => void;
@@ -81,62 +75,47 @@ export function CartaoFatura({
   excecoes,
   pagamentos,
   hoje,
-  anoInicial,
-  mesInicial,
+  cicloInicial,
   onVoltar,
   onEditar,
   onPagar,
 }: Props) {
-  // Mês exibido — começa no mês da linha tocada; navegável.
-  const [ano, setAno] = useState(anoInicial);
-  const [mes, setMes] = useState(mesInicial);
+  // Ciclo exibido — começa no ciclo que a coisa clicada representa; navegável
+  // ciclo-a-ciclo (§5.3). Não navega mais por mês: fatura é ciclo, não mês.
+  const [cicloAbs, setCicloAbs] = useState(cicloInicial);
 
-  function mudarMes(delta: number) {
-    const d = new Date(ano, mes + delta, 1);
-    setAno(d.getFullYear());
-    setMes(d.getMonth());
+  function mudarCiclo(delta: number) {
+    setCicloAbs((c) => c + delta);
   }
-
-  // Ciclo que VENCE no mês exibido (§4.8): a mesma regra que decide onde a linha
-  // pesa na Home. Se o vencimento cai depois do fechamento, a fatura é do
-  // próprio mês; senão, do mês anterior.
-  const cicloAbs = useMemo(() => {
-    const alvoAbs = ano * 12 + mes;
-    return cartao.dia_pagamento > cartao.dia_fechamento ? alvoAbs : alvoAbs - 1;
-  }, [ano, mes, cartao.dia_pagamento, cartao.dia_fechamento]);
 
   const realizado = useMemo(
     () => realizadoDoCiclo(lancamentos, cartao, cicloAbs, hoje, excecoes),
     [lancamentos, cartao, cicloAbs, hoje, excecoes],
   );
 
-  const fase = useMemo(() => faseDoCiclo(cicloAbs, cartao, hoje), [cicloAbs, cartao, hoje]);
+  // Fase pela régua da Carteira (§5.6): o drill-down espelha o ciclo — fechada
+  // se é obrigação pendente, aberta se acumulando/futuro/pago. Devolve também o
+  // evento (fecha/vence DD mmm).
+  const status = useMemo(
+    () => faseCarteiraDoCiclo(cartao, cicloAbs, hoje, pagamentos),
+    [cartao, cicloAbs, hoje, pagamentos],
+  );
+  const fase = status.fase;
 
   const ocorrencias = useMemo(
     () => ocorrenciasDoCiclo(lancamentos, cartao, cicloAbs, hoje, excecoes),
     [lancamentos, cartao, cicloAbs, hoje, excecoes],
   );
 
-  // O valor "grande" do hero é SEMPRE o realizado — o que já foi de fato
-  // consumido na fatura (§4.4). O previsto não entra no número grande; ele vive
-  // só na legenda/barra abaixo (fixo). Consequência aceita: quando a fatura
-  // está aberta com realizado < previsão, o número grande (realizado) é MENOR
-  // que o que pesa no saldo do mês (max(previsão, realizado)) — o card mostra o
-  // real; o impacto no fluxo de caixa continua sendo a regra do max na Home.
+  // Hero: mesmas informações do card da Carteira (§5.6). Valor grande = realizado
+  // do ciclo; barra + previsto restante quando há previsão (inclusive fechada,
+  // §4.4). Previsão null = sem barra.
   const previsao = cartao.previsao_mensal;
-  const temPrev = previsao != null && previsao > 0;
-  const valorHero = realizado;
 
-  // O mês do fechamento é o mês do ciclo (cicloAbs), não o mês exibido.
+  // Rótulo do header: sempre "Fatura de <mês de fechamento>" (opção A). O mês de
+  // fechamento é a identidade estável do ciclo, independente da fase.
   const mesFechamento = ((cicloAbs % 12) + 12) % 12;
-  const pct = temPrev ? Math.round((realizado / previsao!) * 100) : 0;
-  const fechaTxt = `fecha ${cartao.dia_fechamento} ${MESES_CURTO[mesFechamento]}`;
-  const legenda =
-    fase === 'fechada'
-      ? `Fatura fechada · ${fechaTxt}`
-      : temPrev
-      ? `${formatarBR(realizado, { prefixo: true })} de ${formatarBR(previsao!, { prefixo: true })} previstos · ${pct}% da previsão · ${fechaTxt}`
-      : fechaTxt;
+  const tituloCiclo = `Fatura de ${MESES_CURTO[mesFechamento]}`;
 
   // Lista corrida por dia (§5.3, item 2): as compras do ciclo deixam de ser
   // agrupadas por à vista/parcela/assinatura e passam a ser um extrato ordenado
@@ -191,9 +170,9 @@ export function CartaoFatura({
         fechar
         onVoltar={onVoltar}
         mostrarData
-        mesAno={`${MESES[mes]} ${ano}`}
-        onAnterior={() => mudarMes(-1)}
-        onProximo={() => mudarMes(1)}
+        mesAno={tituloCiclo}
+        onAnterior={() => mudarCiclo(-1)}
+        onProximo={() => mudarCiclo(1)}
       />
 
       <main
@@ -205,17 +184,17 @@ export function CartaoFatura({
           padding: `var(--space-sm) var(--space-lg) ${fase === 'fechada' ? 'calc(var(--space-xl) + 88px)' : 'var(--space-xl)'}`,
         }}
       >
-        {/* Hero: instância do Card de entidade (Cartão) — fonte única do visual */}
-        <CardDeEntidade
-          tipo="cartao"
+        {/* Hero (§5.3): mesmas informações do card da Carteira, layout próprio. */}
+        <CartaoHeroDrillDown
           nome={cartao.nome}
-          valor={valorHero}
+          realizado={realizado}
+          previsao={previsao}
+          fase={fase}
+          diaEvento={status.diaEvento}
+          mesEvento={status.mesEvento}
           tema={cartao.tema ?? undefined}
           banco={cartao.banco}
           bandeira={cartao.bandeira}
-          realizado={realizado}
-          previsao={fase === 'fechada' ? null : previsao /* fechada: sem barra (§4.4) */}
-          legenda={legenda}
         />
 
         {gruposPorDia.length === 0 ? (

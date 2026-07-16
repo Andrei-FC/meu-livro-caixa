@@ -42,5 +42,7 @@ export { FazerPagamentoSheet } from './FazerPagamentoSheet';
 export { EditarSheet } from './EditarSheet';
 export type { EscopoSerie } from './EditarSheet';
 
+export { CartaoHeroDrillDown } from './CartaoHeroDrillDown';
+
 // Ícones (re-export de conveniência; também acessíveis em '../icons')
 export * from '../icons';

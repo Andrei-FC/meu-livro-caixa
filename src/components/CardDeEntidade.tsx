@@ -136,7 +136,7 @@ function ContaCompacta({ nome, valor, tema, banco, entradas, saidas }: ContaProp
           {banco ? <LogoBanco chave={banco} tamanho={34} /> : <IconeImage tamanho={30} />}
         </span>
         <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, color: 'var(--text-primary)' }}>
-          <span className="type-body-strong" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
+          <span className="type-numeric" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
           <span className="type-title">{formatarBR(valor, { prefixo: true })}</span>
           <span className="type-micro-strong" style={{ color: 'var(--text-muted)' }}>Saldo Atual</span>
         </div>
@@ -252,7 +252,7 @@ function Cartao(props: CartaoProps) {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, width: '100%', minWidth: 0 }}>
           <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-            <span className="type-body-strong" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
+            <span className="type-numeric" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
             <span className="type-title">{formatarBR(valor, { prefixo: true })}</span>
           </div>
           <BarraDePrevisao realizado={realizado} previsao={previsao} />
@@ -283,7 +283,10 @@ function Cartao(props: CartaoProps) {
 
 /** Tag de fase da fatura (§5.6). Aberta = chip claro (bg-elevated + text-secondary);
  *  fechada = tema do próprio cartão (theme-bg + theme-text). */
-function TagFase({ fase, tema }: { fase: 'aberta' | 'fechada'; tema?: string }) {
+/** Tag de fase da fatura (§5.6). Aberta = chip claro (bg-elevated + text-secondary);
+ *  fechada = tema do próprio cartão (theme-bg + theme-text) + border. Compartilhada
+ *  entre o card compacto da Carteira e o hero do drill-down. */
+export function TagFase({ fase, tema }: { fase: 'aberta' | 'fechada'; tema?: string }) {
   const fechada = fase === 'fechada';
   return (
     <span
@@ -297,6 +300,7 @@ function TagFase({ fase, tema }: { fase: 'aberta' | 'fechada'; tema?: string }) 
         whiteSpace: 'nowrap',
         background: fechada ? 'var(--theme-bg)' : 'var(--bg-elevated)',
         color: fechada ? 'var(--theme-text)' : 'var(--text-secondary)',
+        border: fechada ? '1px solid var(--border-default)' : undefined,
       }}
     >
       {fechada ? 'FECHADA' : 'ABERTA'}

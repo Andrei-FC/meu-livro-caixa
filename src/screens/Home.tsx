@@ -106,7 +106,7 @@ export function Home() {
     | { tela: 'poupanca-edit'; poupanca: Conta | null }
     | { tela: 'conta'; conta: Conta | null }
     | { tela: 'cartao'; cartao: Cartao | null }
-    | { tela: 'drill-cartao'; cartao: Cartao };
+    | { tela: 'drill-cartao'; cartao: Cartao; cicloInicial: number };
   const [pagina, setPagina] = useState<Pagina | null>(null);
 
   // Carrega tudo do Supabase. Robusto a rede intermitente (PWA/iOS): em falha
@@ -441,8 +441,7 @@ export function Home() {
         excecoes={indiceExcecoes}
         pagamentos={indicePagamentos}
         hoje={hoje}
-        anoInicial={ano}
-        mesInicial={mes}
+        cicloInicial={pagina.cicloInicial}
         onVoltar={() => setPagina(null)}
         onEditar={(o) => { setPagina(null); setEmEdicao(o); }}
         onPagar={(cicloAbs, dataISO) => registrarPagamento(pagina.cartao, cicloAbs, dataISO)}
@@ -586,7 +585,14 @@ export function Home() {
                 hoje={hoje}
                 onEditar={setEmEdicao}
                 onApagarTransf={setTransfApagar}
-                onAbrirCartao={(k) => setPagina({ tela: 'drill-cartao', cartao: k })}
+                onAbrirCartao={(k) => {
+                  // A linha de fatura representa o ciclo que VENCE no mês exibido
+                  // (§4.8): vence depois do fechamento → ciclo do próprio mês; senão
+                  // o anterior. É o ciclo que o clique "vivo" carrega (§5.3).
+                  const alvoAbs = ano * 12 + mes;
+                  const cicloInicial = k.dia_pagamento > k.dia_fechamento ? alvoAbs : alvoAbs - 1;
+                  setPagina({ tela: 'drill-cartao', cartao: k, cicloInicial });
+                }}
                 saldoInicial={herdado}
               />
             )}
@@ -613,7 +619,7 @@ export function Home() {
                         fase={st.fase}
                         diaEvento={st.diaEvento}
                         mesEvento={st.mesEvento}
-                        onAbrir={() => setPagina({ tela: 'drill-cartao', cartao: k })}
+                        onAbrir={() => setPagina({ tela: 'drill-cartao', cartao: k, cicloInicial: st.cicloAbs })}
                       />
                     );
                   })}
