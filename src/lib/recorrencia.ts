@@ -632,24 +632,22 @@ export function faseCarteiraDoCiclo(
     montaISO(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()),
     cartao.dia_fechamento,
   );
-  const hojeAbs = indiceMes(hoje.getFullYear(), hoje.getMonth());
-
-  // Já fechou (é anterior ao ciclo aberto de hoje) e a obrigação ainda não venceu?
-  if (cicloAbs < cicloAberto) {
-    const pos = posicaoFatura(cartao, cicloAbs, pagamentos);
-    const vencAbs = pos.mesAbs;
-    // FECHADA-pendente enquanto hoje está ANTES do vencimento. No PRÓPRIO dia do
-    // vencimento (efetivo, se pago; ou padrão) a fatura já sai do radar e o ciclo
-    // vira aberto — pagar hoje vira a fase hoje, não amanhã. (§5.6)
-    const antesDoVenc = hojeAbs < vencAbs || (hojeAbs === vencAbs && hoje.getDate() < pos.dia);
-    if (antesDoVenc) {
-      return { fase: 'fechada', diaEvento: pos.dia, mesEvento: vencAbs % 12 };
-    }
-  }
-  // Aberta: corrente acumulando, futuro, ou já pago — mostra o fechamento.
   const anoF = Math.floor(cicloAbs / 12);
   const mesF = ((cicloAbs % 12) + 12) % 12;
-  return { fase: 'aberta', diaEvento: diaAncoraNoMes(cartao.dia_fechamento, anoF, mesF), mesEvento: mesF };
+  const diaFecha = diaAncoraNoMes(cartao.dia_fechamento, anoF, mesF);
+
+  // ABERTA só se o ciclo AINDA NÃO FECHOU: é o corrente (antes do fechamento) ou
+  // um ciclo futuro. Mostra o dia de FECHAMENTO ("fecha DD mmm").
+  if (cicloAbs >= cicloAberto) {
+    return { fase: 'aberta', diaEvento: diaFecha, mesEvento: mesF };
+  }
+
+  // FECHADA em todo o resto — todo ciclo que já fechou é fato consolidado,
+  // esteja pendente de pagamento ou já pago (inclusive ciclos antigos, pré-app,
+  // sem dados). A tela mostra o VENCIMENTO ("vence DD mmm"): dia efetivo se há
+  // pagamento registrado, senão o padrão.
+  const pos = posicaoFatura(cartao, cicloAbs, pagamentos);
+  return { fase: 'fechada', diaEvento: pos.dia, mesEvento: pos.mesAbs % 12 };
 }
 
 export function statusCarteiraDoCartao(
@@ -664,23 +662,30 @@ export function statusCarteiraDoCartao(
     cartao.dia_fechamento,
   );
   const cicloAnterior = cicloAberto - 1;
+  const hojeAbs = indiceMes(hoje.getFullYear(), hoje.getMonth());
 
-  // A Carteira mostra a fechada-a-pagar (ciclo anterior) enquanto for obrigação
-  // pendente; senão o ciclo aberto. faseCarteiraDoCiclo decide para cada um.
+  // A Carteira segura a fatura FECHADA-A-PAGAR (o ciclo anterior) enquanto for
+  // OBRIGAÇÃO PENDENTE — isto é, enquanto hoje está ANTES do vencimento (efetivo,
+  // se pago; ou padrão). No próprio dia do vencimento/pagamento ela sai do radar
+  // e a Carteira passa a mostrar o ciclo ABERTO acumulando (§5.6). Esta régua é
+  // "ainda devo mostrar isto?", distinta de faseCarteiraDoCiclo ("que fase é?").
   if (cicloAnterior >= 0) {
-    const f = faseCarteiraDoCiclo(cartao, cicloAnterior, hoje, pagamentos);
-    if (f.fase === 'fechada') {
+    const pos = posicaoFatura(cartao, cicloAnterior, pagamentos);
+    const vencAbs = pos.mesAbs;
+    const pendente = hojeAbs < vencAbs || (hojeAbs === vencAbs && hoje.getDate() < pos.dia);
+    if (pendente) {
       return {
         cicloAbs: cicloAnterior,
         fase: 'fechada',
         realizado: realizadoDoCiclo(lancamentos, cartao, cicloAnterior, hoje, excecoes),
         previsao: cartao.previsao_mensal,
-        diaEvento: f.diaEvento,
-        mesEvento: f.mesEvento,
+        diaEvento: pos.dia,
+        mesEvento: vencAbs % 12,
       };
     }
   }
 
+  // Sem fechada pendente: o ciclo corrente, aberto, acumulando.
   const f = faseCarteiraDoCiclo(cartao, cicloAberto, hoje, pagamentos);
   return {
     cicloAbs: cicloAberto,
