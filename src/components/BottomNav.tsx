@@ -1,18 +1,18 @@
-import { IconeNavLancamentos, IconeNavCarteira, IconeNavRelatorio } from '../icons';
+import { IconeNavLancamentos, IconeNavRelatorio, IconeCreditCard, IconeCash } from '../icons';
 
 /**
- * BottomNav — navegação principal (§5.1, Figma set 2343:4706 "Bottom Menu").
- * Substitui as Tabs do topo por uma barra fixa embaixo, mais fácil de alcançar
- * com o polegar (princípio 1 — menos atrito). 3 abas:
- *   Lançamentos · Carteira · Relatório.
- * A aba ativa usa o ícone PREENCHIDO em accent/default; as inativas o contorno
- * em text/muted. Fundo bg/elevated, com folga para a safe-area do iOS.
+ * BottomNav — navegação principal (§5.1). Barra fixa embaixo, alcance de polegar.
+ * 4 abas: Lançamentos · Cartões · Contas · Relatório.
  *
- * A "Carteira" agrupa Cartões + Contas numa tela só (antes duas abas) — a
- * redução de 4→3 abas é o ponto desta mudança de navegação.
+ * Cartões e Contas foram SEPARADOS (antes uma aba "Carteira" só): cartão vive no
+ * ciclo (foto do presente, sem mês) e conta vive no mês — naturezas temporais
+ * distintas que não cabiam numa tela só. A aba Contas tem sub-tabs internas
+ * (Conta corrente / Cofre); a aba Cartões não tem seletor de mês.
+ *
+ * A aba ativa usa accent/default; as inativas text/muted.
  */
 
-export type AbaHome = 'lancamentos' | 'carteira' | 'relatorio';
+export type AbaHome = 'lancamentos' | 'cartoes' | 'contas' | 'relatorio';
 
 const ABAS: {
   id: AbaHome;
@@ -20,7 +20,8 @@ const ABAS: {
   Icone: (p: { tamanho?: number; preenchido?: boolean }) => React.ReactElement;
 }[] = [
   { id: 'lancamentos', rotulo: 'Lançamentos', Icone: IconeNavLancamentos },
-  { id: 'carteira', rotulo: 'Carteira', Icone: IconeNavCarteira },
+  { id: 'cartoes', rotulo: 'Cartões', Icone: ({ tamanho }) => <IconeCreditCard tamanho={tamanho} /> },
+  { id: 'contas', rotulo: 'Contas', Icone: ({ tamanho }) => <IconeCash tamanho={tamanho} /> },
   { id: 'relatorio', rotulo: 'Relatório', Icone: IconeNavRelatorio },
 ];
 

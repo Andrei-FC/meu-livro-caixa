@@ -43,6 +43,8 @@ export { EditarSheet } from './EditarSheet';
 export type { EscopoSerie } from './EditarSheet';
 
 export { CartaoHeroDrillDown } from './CartaoHeroDrillDown';
+export { TabsContas } from './TabsContas';
+export type { TabContas } from './TabsContas';
 
 // Ícones (re-export de conveniência; também acessíveis em '../icons')
 export * from '../icons';

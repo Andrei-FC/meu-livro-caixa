@@ -24,7 +24,20 @@ type ContaProps = Base & {
    *  testeira (Gerenciar Contas). Dívida temporária, como o cartão. */
   compacto?: boolean;
 };
-type PoupancaProps = Base & { tipo: 'poupanca'; /** Chave do ícone de poupança (§4.9). */ icone?: string | null };
+type PoupancaProps = Base & {
+  tipo: 'poupanca';
+  /** Chave do ícone de poupança (§4.9). */
+  icone?: string | null;
+  /** MODELO CARTEIRA (§5.6): layout compacto horizontal, igual ao da conta mas
+   *  com legendas próprias (Guardado / Depositos / Retiradas). */
+  compacto?: boolean;
+  /** Depósitos do mês exibido (só no compacto). */
+  depositos?: number;
+  /** Retiradas do mês exibido (só no compacto). */
+  retiradas?: number;
+  /** Se presente, o card abre o drill-down da poupança ao tocar (§5.4). */
+  onAbrir?: () => void;
+};
 type CofreProps = Base & { tipo: 'cofre' };
 type CartaoProps = Base & {
   tipo: 'cartao';
@@ -61,7 +74,8 @@ const CARD: React.CSSProperties = {
 
 export function CardDeEntidade(props: Props) {
   if (props.tipo === 'cartao') return <Cartao {...props} />;
-  if (props.tipo === 'conta' && props.compacto) return <ContaCompacta {...props} />;
+  if (props.tipo === 'conta' && props.compacto) return <EntidadeCompacta {...props} />;
+  if (props.tipo === 'poupanca' && props.compacto) return <EntidadeCompacta {...props} />;
   return <ComTesteira {...props} />;
 }
 
@@ -111,12 +125,30 @@ function ComTesteira(props: ContaProps | PoupancaProps | CofreProps) {
   );
 }
 
-/** Conta compacta (§5.6, aba Carteira): layout horizontal, sem card de surface —
- *  tudo sobre o fundo neutro. Ícone quadrado temático à esquerda; centro com
- *  nome + saldo atual + rótulo; direita com Entradas/Saídas empilhadas. */
-function ContaCompacta({ nome, valor, tema, banco, entradas, saidas }: ContaProps) {
+/** Card compacto de conta OU poupança (§5.6): layout horizontal, sem surface —
+ *  ícone quadrado temático à esquerda, identidade no centro, dois números à
+ *  direita. Conta e poupança compartilham o layout; mudam só as legendas:
+ *  conta = Saldo Atual / Entradas / Saídas; poupança = Guardado / Depositos /
+ *  Retiradas. */
+function EntidadeCompacta(props: ContaProps | PoupancaProps) {
+  const { nome, valor, tema } = props;
+  const poupanca = props.tipo === 'poupanca';
+  const onAbrir = poupanca ? props.onAbrir : undefined;
+  const icone = poupanca ? props.icone : props.banco;
+  const rotuloSaldo = poupanca ? 'Guardado' : 'Saldo Atual';
+  const rotuloPos = poupanca ? 'Depositos' : 'Entradas';
+  const rotuloNeg = poupanca ? 'Retiradas' : 'Saídas';
+  const positivo = poupanca ? props.depositos ?? 0 : props.entradas;
+  const negativo = poupanca ? props.retiradas ?? 0 : props.saidas;
+
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, width: '100%' }}>
+    <div
+      style={{ display: 'flex', alignItems: 'flex-end', gap: 12, width: '100%', cursor: onAbrir ? 'pointer' : undefined }}
+      onClick={onAbrir}
+      role={onAbrir ? 'button' : undefined}
+      tabIndex={onAbrir ? 0 : undefined}
+      onKeyDown={onAbrir ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAbrir(); } } : undefined}
+    >
       {/* Ícone quadrado temático + identidade (centro) */}
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flex: '1 1 0', minWidth: 0 }}>
         <span
@@ -133,25 +165,25 @@ function ContaCompacta({ nome, valor, tema, banco, entradas, saidas }: ContaProp
             color: tema ? 'var(--theme-text)' : 'var(--text-primary)',
           }}
         >
-          {banco ? <LogoBanco chave={banco} tamanho={34} /> : <IconeImage tamanho={30} />}
+          {icone ? <LogoBanco chave={icone} tamanho={34} /> : <IconeImage tamanho={30} />}
         </span>
         <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, color: 'var(--text-primary)' }}>
           <span className="type-numeric" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
           <span className="type-title">{formatarBR(valor, { prefixo: true })}</span>
-          <span className="type-micro-strong" style={{ color: 'var(--text-muted)' }}>Saldo Atual</span>
+          <span className="type-micro-strong" style={{ color: 'var(--text-muted)' }}>{rotuloSaldo}</span>
         </div>
       </div>
 
-      {/* Entradas / Saídas empilhadas, alinhadas à direita */}
+      {/* Dois números empilhados, alinhados à direita */}
       <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8, flexShrink: 0, textAlign: 'right' }}>
-        <MiniCarteira rotulo="Entradas" cor="var(--value-entrada)" texto={formatarBR(entradas, { sinal: '+' })} />
-        <MiniCarteira rotulo="Saídas" cor="var(--value-saida)" texto={formatarBR(-Math.abs(saidas))} />
+        <MiniCarteira rotulo={rotuloPos} cor="var(--value-entrada)" texto={formatarBR(positivo, { sinal: '+' })} />
+        <MiniCarteira rotulo={rotuloNeg} cor="var(--value-saida)" texto={formatarBR(-Math.abs(negativo))} />
       </div>
     </div>
   );
 }
 
-/** Bloco Entradas/Saídas da conta compacta: rótulo micro-strong muted + valor
+/** Bloco de número da entidade compacta: rótulo micro-strong muted + valor
  *  body-small-strong colorido, alinhados à direita. */
 function MiniCarteira({ rotulo, cor, texto }: { rotulo: string; cor: string; texto: string }) {
   return (

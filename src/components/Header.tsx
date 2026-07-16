@@ -45,8 +45,9 @@ const topBar: React.CSSProperties = {
 
 type DefaultProps = {
   variante?: 'default';
-  /** Rótulo do mês corrente, ex.: "Junho 2026". */
-  mesAno: string;
+  /** Rótulo do mês corrente, ex.: "Junho 2026". Ausente = header só com menu
+   *  (aba Cartões — cartão vive no ciclo, sem seletor de mês; §5.6). */
+  mesAno?: string;
   /** Toca no menu (abre o drawer de gestão, §5.8). */
   onMenu?: () => void;
   onAnterior?: () => void;
@@ -138,6 +139,9 @@ const headerFade: React.CSSProperties = {
 };
 
 function HeaderDefault({ mesAno, onMenu, onAnterior, onProximo, innerRef }: DefaultProps & { innerRef: React.Ref<HTMLElement> }) {
+  // Sem mesAno = header só com menu (aba Cartões — cartão vive no ciclo, não no
+  // mês, então não há seletor de mês; §5.6).
+  const semData = !mesAno;
   return (
     <header ref={innerRef} style={headerSticky}>
       <div aria-hidden style={headerFade} />
@@ -147,23 +151,25 @@ function HeaderDefault({ mesAno, onMenu, onAnterior, onProximo, innerRef }: Defa
           <IconeMenu tamanho={22} />
         </button>
 
-        {/* Navegação de mês */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
-          <button type="button" aria-label="Mês anterior" onClick={onAnterior} style={{ ...botaoPill, width: 36, height: 36 }}>
-            <IconeChevronLeft tamanho={18} />
-          </button>
+        {/* Navegação de mês (omitida quando não há mesAno) */}
+        {!semData && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)' }}>
+            <button type="button" aria-label="Mês anterior" onClick={onAnterior} style={{ ...botaoPill, width: 36, height: 36 }}>
+              <IconeChevronLeft tamanho={18} />
+            </button>
 
-          <span
-            className="type-title"
-            style={{ color: 'var(--text-primary)', padding: '0 var(--space-xs)', textTransform: 'capitalize', whiteSpace: 'nowrap' }}
-          >
-            {mesAno}
-          </span>
+            <span
+              className="type-title"
+              style={{ color: 'var(--text-primary)', padding: '0 var(--space-xs)', textTransform: 'capitalize', whiteSpace: 'nowrap' }}
+            >
+              {mesAno}
+            </span>
 
-          <button type="button" aria-label="Próximo mês" onClick={onProximo} style={{ ...botaoPill, width: 36, height: 36 }}>
-            <IconeChevronRight tamanho={18} />
-          </button>
-        </div>
+            <button type="button" aria-label="Próximo mês" onClick={onProximo} style={{ ...botaoPill, width: 36, height: 36 }}>
+              <IconeChevronRight tamanho={18} />
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

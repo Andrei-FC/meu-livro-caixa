@@ -38,6 +38,8 @@ import {
   CardDeEntidade,
   FAB,
   Header,
+  TabsContas,
+  type TabContas,
   MenuDrawer,
   type DestinoMenu,
   LancarSheet,
@@ -76,6 +78,9 @@ export function Home() {
   const [ano, setAno] = useState(hoje.getFullYear());
   const [mes, setMes] = useState(hoje.getMonth()); // 0-11
   const [aba, setAba] = useState<AbaHome>('lancamentos');
+  // Sub-navegação da aba Contas (§5.6): conta corrente | cofre. Estado local, não
+  // toca a BottomNav.
+  const [tabContas, setTabContas] = useState<TabContas>('corrente');
 
   const [contas, setContas] = useState<Conta[]>([]);
   const [cartoes, setCartoes] = useState<Cartao[]>([]);
@@ -315,6 +320,27 @@ export function Home() {
     [transferencias, contas, hoje],
   );
   const poupancas = useMemo(() => contas.filter((c) => c.tipo === 'poupanca'), [contas]);
+  const correntes = useMemo(() => contas.filter((c) => c.tipo === 'corrente'), [contas]);
+  // Depósitos/retiradas por poupança no MÊS EXIBIDO (§5.6, aba Contas → Cofre) —
+  // os dois números do card compacto de poupança. Depósito = transferência com
+  // destino nesta poupança; retirada = com origem nela.
+  const movPorPoupanca = useMemo(() => {
+    const m = new Map<string, { depositos: number; retiradas: number }>();
+    const idsPoup = new Set(poupancas.map((p) => p.id));
+    for (const o of transferenciasLista) {
+      if (idsPoup.has(o.para_conta_id)) {
+        const acc = m.get(o.para_conta_id) ?? { depositos: 0, retiradas: 0 };
+        acc.depositos += o.valor;
+        m.set(o.para_conta_id, acc);
+      }
+      if (idsPoup.has(o.de_conta_id)) {
+        const acc = m.get(o.de_conta_id) ?? { depositos: 0, retiradas: 0 };
+        acc.retiradas += o.valor;
+        m.set(o.de_conta_id, acc);
+      }
+    }
+    return m;
+  }, [transferenciasLista, poupancas]);
   // Saldo por conta para a aba CARTEIRA — a "foto de hoje" (§5.6). Passamos
   // sempre o corte = hoje: no mês corrente corta em hoje (só o que já
   // aconteceu; salário do dia 30 não conta até cair); meses passados entram
@@ -510,7 +536,7 @@ export function Home() {
     <div style={{ maxWidth: 480, margin: '0 auto', minHeight: '100dvh', position: 'relative' }}>
       {/* ── Header: sticky universal vem do próprio componente ── */}
       <Header
-        mesAno={`${MESES[mes]} ${ano}`}
+        mesAno={aba === 'cartoes' ? undefined : `${MESES[mes]} ${ano}`}
         onMenu={() => setMenuAberto(true)}
         onAnterior={() => mudarMes(-1)}
         onProximo={() => mudarMes(1)}
@@ -597,44 +623,92 @@ export function Home() {
               />
             )}
 
-            {aba === 'carteira' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
-                {/* CARTÕES (§5.5 Figma "Home — Cartões": cartões e contas na mesma
-                    tela, cada bloco com sua testeira). */}
-                <SecaoCarteira titulo="CARTÕES" vazio="Nenhum cartão cadastrado.">
-                  {cartoesOrdenados.map((k) => {
+            {aba === 'cartoes' && (
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                {/* Aba Cartões (§5.6): só cartões, sem seletor de mês — cada cartão
+                    mostra seu ciclo vivo (foto do presente). Ordenados por
+                    vencimento; divisórias entre eles. */}
+                {cartoesOrdenados.length === 0 ? (
+                  <p className="type-caption" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-lg) 0' }}>
+                    Nenhum cartão cadastrado.
+                  </p>
+                ) : (
+                  cartoesOrdenados.map((k, i) => {
                     const st = statusCarteira.get(k.id);
                     if (!st) return null;
                     return (
-                      <CardDeEntidade
-                        key={k.id}
-                        tipo="cartao"
-                        nome={k.nome}
-                        valor={st.realizado}
-                        tema={k.tema ?? undefined}
-                        banco={k.banco}
-                        bandeira={k.bandeira}
-                        realizado={st.realizado}
-                        previsao={st.previsao}
-                        fase={st.fase}
-                        diaEvento={st.diaEvento}
-                        mesEvento={st.mesEvento}
-                        onAbrir={() => setPagina({ tela: 'drill-cartao', cartao: k, cicloInicial: st.cicloAbs })}
-                      />
+                      <div key={k.id}>
+                        {i > 0 && <div style={{ height: 1, background: 'var(--border-default)', margin: 'var(--space-md) 0' }} />}
+                        <CardDeEntidade
+                          tipo="cartao"
+                          nome={k.nome}
+                          valor={st.realizado}
+                          tema={k.tema ?? undefined}
+                          banco={k.banco}
+                          bandeira={k.bandeira}
+                          realizado={st.realizado}
+                          previsao={st.previsao}
+                          fase={st.fase}
+                          diaEvento={st.diaEvento}
+                          mesEvento={st.mesEvento}
+                          onAbrir={() => setPagina({ tela: 'drill-cartao', cartao: k, cicloInicial: st.cicloAbs })}
+                        />
+                      </div>
                     );
-                  })}
-                </SecaoCarteira>
+                  })
+                )}
+              </div>
+            )}
 
-                {/* CONTAS */}
-                <SecaoCarteira titulo="CONTAS" vazio="Nenhuma conta ativa.">
-                  {contas.map((c) =>
-                    c.tipo === 'poupanca' ? (
-                      <CardDeEntidade key={c.id} tipo="poupanca" nome={c.nome} valor={0 /* TODO §4.7 poupança */} tema={c.tema ?? undefined} />
-                    ) : (
-                      <CardDeEntidade key={c.id} tipo="conta" compacto nome={c.nome} valor={saldosPorContaMesExibido.get(c.id) ?? 0} tema={c.tema ?? undefined} banco={c.icone} entradas={porConta.get(c.id)?.entradas ?? 0} saidas={porConta.get(c.id)?.saidas ?? 0} />
-                    ),
-                  )}
-                </SecaoCarteira>
+            {aba === 'contas' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+                {/* Sub-navegação (§5.6): Conta Corrente | Cofre. */}
+                <TabsContas ativa={tabContas} onMudar={setTabContas} />
+
+                {tabContas === 'corrente' ? (
+                  correntes.length === 0 ? (
+                    <p className="type-caption" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-lg) 0' }}>
+                      Nenhuma conta ativa.
+                    </p>
+                  ) : (
+                    correntes.map((c, i) => (
+                      <div key={c.id}>
+                        {i > 0 && <div style={{ height: 1, background: 'var(--border-default)', margin: 'var(--space-md) 0' }} />}
+                        <CardDeEntidade
+                          tipo="conta"
+                          compacto
+                          nome={c.nome}
+                          valor={saldosPorContaMesExibido.get(c.id) ?? 0}
+                          tema={c.tema ?? undefined}
+                          banco={c.icone}
+                          entradas={porConta.get(c.id)?.entradas ?? 0}
+                          saidas={porConta.get(c.id)?.saidas ?? 0}
+                        />
+                      </div>
+                    ))
+                  )
+                ) : poupancas.length === 0 ? (
+                  <p className="type-caption" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-lg) 0' }}>
+                    Nenhuma poupança criada.
+                  </p>
+                ) : (
+                  poupancas.map((p, i) => (
+                    <div key={p.id}>
+                      {i > 0 && <div style={{ height: 1, background: 'var(--border-default)', margin: 'var(--space-md) 0' }} />}
+                      <CardDeEntidade
+                        tipo="poupanca"
+                        compacto
+                        nome={p.nome}
+                        valor={saldosPorPoupanca.get(p.id) ?? 0}
+                        tema={p.tema ?? undefined}
+                        icone={p.icone}
+                        depositos={movPorPoupanca.get(p.id)?.depositos ?? 0}
+                        retiradas={movPorPoupanca.get(p.id)?.retiradas ?? 0}
+                        onAbrir={() => setPagina({ tela: 'poupanca', poupanca: p })}
+                      />
+                    </div>
+                  ))
+                )}
               </div>
             )}
 
@@ -873,35 +947,6 @@ function Lancamentos(props: {
           </div>
         );
       })}
-    </div>
-  );
-}
-
-/* ───────── Aba Carteira: seção titulada (Cartões / Contas) ───────── */
-
-function SecaoCarteira({ titulo, children, vazio }: { titulo: string; children: React.ReactNode; vazio: string }) {
-  const arr = (Array.isArray(children) ? children : [children]).flat().filter(Boolean);
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
-      <div style={{ padding: '4px 0 0 4px' }}>
-        <span className="type-label" style={{ color: 'var(--text-muted)', letterSpacing: '0.02em' }}>
-          {titulo}
-        </span>
-      </div>
-      {arr.length === 0 ? (
-        <p className="type-caption" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-lg) 0' }}>
-          {vazio}
-        </p>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {arr.map((filho, i) => (
-            <div key={i}>
-              {i > 0 && <div style={{ height: 1, background: 'var(--border-default)', margin: 'var(--space-md) 0' }} />}
-              {filho}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
