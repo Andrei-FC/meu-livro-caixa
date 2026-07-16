@@ -618,7 +618,7 @@ export function Home() {
                     c.tipo === 'poupanca' ? (
                       <CardDeEntidade key={c.id} tipo="poupanca" nome={c.nome} valor={0 /* TODO §4.7 poupança */} tema={c.tema ?? undefined} />
                     ) : (
-                      <CardDeEntidade key={c.id} tipo="conta" nome={c.nome} valor={saldosPorContaMesExibido.get(c.id) ?? 0} tema={c.tema ?? undefined} banco={c.icone} entradas={porConta.get(c.id)?.entradas ?? 0} saidas={porConta.get(c.id)?.saidas ?? 0} />
+                      <CardDeEntidade key={c.id} tipo="conta" compacto nome={c.nome} valor={saldosPorContaMesExibido.get(c.id) ?? 0} tema={c.tema ?? undefined} banco={c.icone} entradas={porConta.get(c.id)?.entradas ?? 0} saidas={porConta.get(c.id)?.saidas ?? 0} />
                     ),
                   )}
                 </SecaoCarteira>

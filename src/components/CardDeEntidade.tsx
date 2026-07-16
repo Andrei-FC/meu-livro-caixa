@@ -19,6 +19,10 @@ type ContaProps = Base & {
   tipo: 'conta';
   entradas: number;
   saidas: number;
+  /** MODELO CARTEIRA (§5.6): layout compacto horizontal (ícone temático + saldo
+   *  atual + entradas/saídas, sobre fundo neutro). Ausente = card cheio com
+   *  testeira (Gerenciar Contas). Dívida temporária, como o cartão. */
+  compacto?: boolean;
 };
 type PoupancaProps = Base & { tipo: 'poupanca'; /** Chave do ícone de poupança (§4.9). */ icone?: string | null };
 type CofreProps = Base & { tipo: 'cofre' };
@@ -57,6 +61,7 @@ const CARD: React.CSSProperties = {
 
 export function CardDeEntidade(props: Props) {
   if (props.tipo === 'cartao') return <Cartao {...props} />;
+  if (props.tipo === 'conta' && props.compacto) return <ContaCompacta {...props} />;
   return <ComTesteira {...props} />;
 }
 
@@ -102,6 +107,57 @@ function ComTesteira(props: ContaProps | PoupancaProps | CofreProps) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Conta compacta (§5.6, aba Carteira): layout horizontal, sem card de surface —
+ *  tudo sobre o fundo neutro. Ícone quadrado temático à esquerda; centro com
+ *  nome + saldo atual + rótulo; direita com Entradas/Saídas empilhadas. */
+function ContaCompacta({ nome, valor, tema, banco, entradas, saidas }: ContaProps) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, width: '100%' }}>
+      {/* Ícone quadrado temático + identidade (centro) */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flex: '1 1 0', minWidth: 0 }}>
+        <span
+          data-card-theme={tema}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 68,
+            height: 68,
+            borderRadius: 16,
+            flexShrink: 0,
+            background: tema ? 'var(--theme-bg)' : 'var(--bg-elevated)',
+            color: tema ? 'var(--theme-text)' : 'var(--text-primary)',
+          }}
+        >
+          {banco ? <LogoBanco chave={banco} tamanho={34} /> : <IconeImage tamanho={30} />}
+        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, color: 'var(--text-primary)' }}>
+          <span className="type-body-strong" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
+          <span className="type-title">{formatarBR(valor, { prefixo: true })}</span>
+          <span className="type-micro-strong" style={{ color: 'var(--text-muted)' }}>Saldo Atual</span>
+        </div>
+      </div>
+
+      {/* Entradas / Saídas empilhadas */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+        <MiniCarteira rotulo="Entradas" cor="var(--value-entrada)" texto={formatarBR(entradas, { sinal: '+' })} />
+        <MiniCarteira rotulo="Saídas" cor="var(--value-saida)" texto={formatarBR(-Math.abs(saidas))} />
+      </div>
+    </div>
+  );
+}
+
+/** Bloco Entradas/Saídas da conta compacta: rótulo micro-strong muted + valor
+ *  body-small-strong colorido. Difere do `Mini` (que usa type-micro/muted). */
+function MiniCarteira({ rotulo, cor, texto }: { rotulo: string; cor: string; texto: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <span className="type-micro-strong" style={{ color: 'var(--text-muted)' }}>{rotulo}</span>
+      <span className="type-body-small-strong" style={{ color: cor }}>{texto}</span>
     </div>
   );
 }
@@ -153,7 +209,8 @@ function Cartao(props: CartaoProps) {
     );
   }
 
-  // MODELO CARTEIRA (§5.6): duas colunas, tag de fase + evento + Previsto Restante.
+  // MODELO CARTEIRA (§5.6): bloco temático CONTIDO à esquerda + coluna de
+  // metadados à direita, sobre o fundo NEUTRO da tela (fora do tema).
   const fase = props.fase!;
   const diaEvento = props.diaEvento!;
   const mesEvento = props.mesEvento!;
@@ -163,59 +220,79 @@ function Cartao(props: CartaoProps) {
   const eventoTexto = `${fase === 'fechada' ? 'vence' : 'fecha'} ${diaMesCurto(diaEvento, mesEvento)}`;
 
   return (
-    <div style={shell} data-card-theme={tema} onClick={abridor.onClick} role={abridor.role} tabIndex={abridor.tabIndex} onKeyDown={abridor.onKeyDown}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-        {/* Esquerda: identidade + valor + barra */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, flex: '1 1 0', minWidth: 0 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-            <SlotLogo banco={banco} />
-            <SlotBandeira bandeira={bandeira} />
-          </span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-            <span className="type-micro-strong" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
-            <span className="type-numeric">{formatarBR(valor, { prefixo: true })}</span>
-          </div>
-          <BarraDePrevisao realizado={realizado} previsao={previsao} />
+    <div
+      style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, width: '100%', ...(abridor.style ?? {}) }}
+      onClick={abridor.onClick}
+      role={abridor.role}
+      tabIndex={abridor.tabIndex}
+      onKeyDown={abridor.onKeyDown}
+    >
+      {/* Bloco temático contido: logo/bandeira · nome · valor · barra */}
+      <div
+        data-card-theme={tema}
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          padding: 12,
+          borderRadius: 16,
+          background: 'var(--theme-bg)',
+          color: 'var(--theme-text)',
+          flex: '1 1 0',
+          minWidth: 0,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <SlotLogo banco={banco} />
+          <SlotBandeira bandeira={bandeira} />
         </div>
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          <span className="type-body-strong" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
+          <span className="type-title">{formatarBR(valor, { prefixo: true })}</span>
+        </div>
+        <BarraDePrevisao realizado={realizado} previsao={previsao} />
+      </div>
 
-        {/* Direita: tag de fase + evento + previsto restante */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8, flexShrink: 0 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-            <TagFase fase={fase} />
-            <span className="type-label" style={{ opacity: 0.7 }}>{eventoTexto}</span>
-          </div>
-          {temPrev && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-              <span className="type-micro" style={{ opacity: 0.7 }}>
-                {acima ? 'Acima da previsão' : 'Previsto Restante'}
-              </span>
-              <span className="type-label" style={{ color: acima ? 'var(--value-saida)' : undefined, opacity: acima ? 1 : 0.7 }}>
-                {formatarBR(restante, { prefixo: true })}
-              </span>
-            </div>
-          )}
+      {/* Coluna direita: tag + evento + previsto restante — fundo neutro. */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', alignSelf: 'stretch', gap: 8, flexShrink: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+          <TagFase fase={fase} tema={tema} />
+          <span className="type-label" style={{ color: 'var(--text-primary)', opacity: 0.7 }}>{eventoTexto}</span>
         </div>
+        {temPrev && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+            <span className="type-micro-strong" style={{ color: 'var(--text-muted)' }}>
+              {acima ? 'Acima da previsão' : 'Previsto Restante'}
+            </span>
+            <span className="type-label" style={{ color: acima ? 'var(--value-saida)' : 'var(--text-primary)', opacity: acima ? 1 : 0.7 }}>
+              {formatarBR(restante, { prefixo: true })}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-/** Tag de fase da fatura (§5.6). Fundo bar/track translúcido (imune a tema),
- *  texto micro-strong. "FATURA ABERTA" | "FATURA FECHADA". */
-function TagFase({ fase }: { fase: 'aberta' | 'fechada' }) {
+/** Tag de fase da fatura (§5.6). Aberta = chip claro (bg-elevated + text-secondary);
+ *  fechada = tema do próprio cartão (theme-bg + theme-text). */
+function TagFase({ fase, tema }: { fase: 'aberta' | 'fechada'; tema?: string }) {
+  const fechada = fase === 'fechada';
   return (
     <span
       className="type-micro-strong"
+      data-card-theme={fechada ? tema : undefined}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
         padding: '6px 10px',
         borderRadius: 'var(--radius-sm)',
-        background: 'var(--bar-track)',
         whiteSpace: 'nowrap',
+        background: fechada ? 'var(--theme-bg)' : 'var(--bg-elevated)',
+        color: fechada ? 'var(--theme-text)' : 'var(--text-secondary)',
       }}
     >
-      {fase === 'fechada' ? 'FATURA FECHADA' : 'FATURA ABERTA'}
+      {fechada ? 'FATURA FECHADA' : 'FATURA ABERTA'}
     </span>
   );
 }
