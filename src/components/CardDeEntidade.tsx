@@ -27,6 +27,10 @@ type ContaProps = Base & {
    *  "Saldo Atual" (corrente) · "Saldo Final" (passado) · "Saldo Previsto"
    *  (futuro). Ausente = "Saldo Atual". */
   rotuloSaldo?: string;
+  /** Rótulos dos dois números, no compacto. No futuro viram "Entradas/Saídas
+   *  Previstas" (Item 2). Ausentes = "Entradas"/"Saídas". */
+  rotuloPos?: string;
+  rotuloNeg?: string;
 };
 type PoupancaProps = Base & {
   tipo: 'poupanca';
@@ -42,6 +46,10 @@ type PoupancaProps = Base & {
   /** Rótulo do saldo, no compacto. Muda com o mês (Item 2): "Guardado"
    *  (corrente) · "Guardado (fim do mês)" passado/futuro. Ausente = "Guardado". */
   rotuloSaldo?: string;
+  /** Rótulos dos dois números. No futuro viram "Depósitos/Retiradas Previstas"
+   *  (Item 2). Ausentes = "Depositos"/"Retiradas". */
+  rotuloPos?: string;
+  rotuloNeg?: string;
   /** Se presente, o card abre o drill-down da poupança ao tocar (§5.4). */
   onAbrir?: () => void;
 };
@@ -148,8 +156,8 @@ function EntidadeCompacta(props: ContaProps | PoupancaProps) {
   // tudo por LogoBanco, e a chave de poupança não existia lá — ícone sumia.
   const IconePoup = poupanca && icone ? ICONES_POUPANCA[icone] : null;
   const rotuloSaldo = props.rotuloSaldo ?? (poupanca ? 'Guardado' : 'Saldo Atual');
-  const rotuloPos = poupanca ? 'Depositos' : 'Entradas';
-  const rotuloNeg = poupanca ? 'Retiradas' : 'Saídas';
+  const rotuloPos = props.rotuloPos ?? (poupanca ? 'Depositos' : 'Entradas');
+  const rotuloNeg = props.rotuloNeg ?? (poupanca ? 'Retiradas' : 'Saídas');
   const positivo = poupanca ? props.depositos ?? 0 : props.entradas;
   const negativo = poupanca ? props.retiradas ?? 0 : props.saidas;
 

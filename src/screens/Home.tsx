@@ -9,6 +9,7 @@ import {
   saldoHerdado,
   liquidoDoMes,
   faturaNoMes,
+  faturaSaidaPorConta,
   realizadoDoCiclo,
   faseDoCiclo,
   statusCarteiraDoCartao,
@@ -278,6 +279,31 @@ export function Home() {
     return { entradas: e, saidas: s };
   }, [ocorrenciasLista]);
 
+  // Discriminador de mês (Item 2) e corte da foto de hoje. Usados pelos cards da
+  // aba Contas: o corte só se aplica no mês corrente (vivo até hoje); passado é
+  // fato pleno, futuro projeta o mês inteiro. Definidos aqui em cima porque os
+  // mapas de entradas/saídas por conta (logo abaixo) precisam do corte.
+  const ehMesCorrente = ano === hoje.getFullYear() && mes === hoje.getMonth();
+  const mesExibidoAbs = ano * 12 + mes;
+  const mesCorrenteAbs = hoje.getFullYear() * 12 + hoje.getMonth();
+  const ehMesFuturo = mesExibidoAbs > mesCorrenteAbs;
+  const corteHoje = useMemo(() => {
+    const mm = String(hoje.getMonth() + 1).padStart(2, '0');
+    const dd = String(hoje.getDate()).padStart(2, '0');
+    return `${hoje.getFullYear()}-${mm}-${dd}`;
+  }, [hoje]);
+  const corteSaldoConta = ehMesCorrente ? corteHoje : undefined;
+  // Rótulo do saldo/números acompanha o significado do número (Item 2): vivo no
+  // corrente, consolidado no passado, previsto no futuro. No futuro os próprios
+  // Entradas/Saídas viram "Previstas" — o card inteiro no condicional, compondo
+  // com o Saldo Previsto.
+  const rotuloSaldoConta = ehMesCorrente ? 'Saldo Atual' : ehMesFuturo ? 'Saldo Previsto' : 'Saldo Final';
+  const rotuloSaldoPoup = ehMesCorrente ? 'Guardado' : ehMesFuturo ? 'Guardado Previsto' : 'Guardado (fim)';
+  const rotuloEntradas = ehMesFuturo ? 'Entradas Previstas' : 'Entradas';
+  const rotuloSaidas = ehMesFuturo ? 'Saídas Previstas' : 'Saídas';
+  const rotuloDepositos = ehMesFuturo ? 'Depósitos Previstos' : 'Depositos';
+  const rotuloRetiradas = ehMesFuturo ? 'Retiradas Previstas' : 'Retiradas';
+
   // Entradas/saídas por conta no MÊS EXIBIDO — cards da aba Contas da Home
   // (acompanha a navegação de mês). Débito puro já vem filtrado (§4.8).
   //
@@ -303,8 +329,14 @@ export function Home() {
       bump(t.para_conta_id, 'entradas', t.valor); // chegou nesta conta
       bump(t.de_conta_id, 'saidas', t.valor); // saiu desta conta
     }
+    // Fatura de cartão = saída da conta pagadora (§4.8) — fecha com o saldo, que
+    // já debita a fatura. Mesmo corte do saldo: no mês corrente só se já pagou.
+    const faturaSaida = faturaSaidaPorConta(
+      lancamentos, cartoes, ano, mes, hoje, indiceExcecoes, indicePagamentos, corteSaldoConta,
+    );
+    for (const [contaId, v] of faturaSaida) bump(contaId, 'saidas', v);
     return m;
-  }, [ocorrenciasLista, transferenciasLista, contas]);
+  }, [ocorrenciasLista, transferenciasLista, contas, lancamentos, cartoes, ano, mes, hoje, indiceExcecoes, indicePagamentos, corteSaldoConta]);
 
   // Entradas/saídas por conta no MÊS ATUAL real (não o exibido) — tela de
   // Gerenciar Contas, que não tem seletor de mês: mostra sempre o corrente.
@@ -327,8 +359,14 @@ export function Home() {
       bump(t.para_conta_id, 'entradas', t.valor);
       bump(t.de_conta_id, 'saidas', t.valor);
     }
+    // Fatura de cartão como saída da conta pagadora (§4.8). Mês corrente sempre:
+    // corte = hoje (só conta a fatura já paga), igual ao saldo desta tela.
+    const faturaSaida = faturaSaidaPorConta(
+      lancamentos, cartoes, hoje.getFullYear(), hoje.getMonth(), hoje, indiceExcecoes, indicePagamentos, corteHoje,
+    );
+    for (const [contaId, v] of faturaSaida) bump(contaId, 'saidas', v);
     return m;
-  }, [lancamentos, transferencias, contas, hoje, indiceExcecoes]);
+  }, [lancamentos, transferencias, contas, cartoes, hoje, indiceExcecoes, indicePagamentos, corteHoje]);
   // Saldo acumulado por conta (§4.7) até o mês ATUAL — cards da tela Gerenciar
   // Contas. Invariante: soma das correntes == saldo do topo. A fatura de cada
   // cartão debita a conta pagadora (cartao.conta_id).
@@ -370,29 +408,12 @@ export function Home() {
     return m;
   }, [transferenciasLista, poupancas]);
   // Saldo por conta na aba Contas (§5.6, Item 2) — o número muda de SIGNIFICADO
-  // conforme o mês navegado, alinhando o saldo ao mês que se olha:
-  //   • mês CORRENTE → saldo vivo (corte = hoje): fato até hoje + o que já rolou
-  //     no mês; salário do dia 30 ainda não conta. É a "foto do presente".
+  // conforme o mês navegado (ehMesCorrente/ehMesFuturo/corteSaldoConta definidos
+  // acima, junto dos mapas de entradas/saídas):
+  //   • mês CORRENTE → saldo vivo (corte = hoje): fato até hoje + o que já rolou.
   //   • mês PASSADO → consolidado do fim do mês (sem corte): tudo já é fato.
   //   • mês FUTURO → projeção do fim do mês inteiro (sem corte): herdado + tudo
-  //     que o motor projeta cair no mês (§4.1). Antes, o corte fixo em hoje
-  //     zerava a projeção e sobrava só o herdado — o "não faz sentido" ao navegar.
-  // O corte, portanto, só se aplica quando o mês exibido É o corrente.
-  const ehMesCorrente = ano === hoje.getFullYear() && mes === hoje.getMonth();
-  // Rótulo do saldo acompanha o significado do número (Item 2): vivo no corrente,
-  // consolidado no passado, previsto no futuro — senão "Saldo Atual" mentiria num
-  // mês que não tem "hoje".
-  const mesExibidoAbs = ano * 12 + mes;
-  const mesCorrenteAbs = hoje.getFullYear() * 12 + hoje.getMonth();
-  const ehMesFuturo = mesExibidoAbs > mesCorrenteAbs;
-  const rotuloSaldoConta = ehMesCorrente ? 'Saldo Atual' : ehMesFuturo ? 'Saldo Previsto' : 'Saldo Final';
-  const rotuloSaldoPoup = ehMesCorrente ? 'Guardado' : ehMesFuturo ? 'Guardado Previsto' : 'Guardado (fim)';
-  const corteHoje = useMemo(() => {
-    const mm = String(hoje.getMonth() + 1).padStart(2, '0');
-    const dd = String(hoje.getDate()).padStart(2, '0');
-    return `${hoje.getFullYear()}-${mm}-${dd}`;
-  }, [hoje]);
-  const corteSaldoConta = ehMesCorrente ? corteHoje : undefined;
+  //     que o motor projeta cair no mês (§4.1).
   const saldosPorContaMesExibido = useMemo(
     () => saldoAcumuladoPorConta(
       lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes, indicePagamentos,
@@ -732,6 +753,8 @@ export function Home() {
                           tema={c.tema ?? undefined}
                           banco={c.icone}
                           rotuloSaldo={rotuloSaldoConta}
+                          rotuloPos={rotuloEntradas}
+                          rotuloNeg={rotuloSaidas}
                           entradas={porConta.get(c.id)?.entradas ?? 0}
                           saidas={porConta.get(c.id)?.saidas ?? 0}
                         />
@@ -754,6 +777,8 @@ export function Home() {
                         tema={p.tema ?? undefined}
                         icone={p.icone}
                         rotuloSaldo={rotuloSaldoPoup}
+                        rotuloPos={rotuloDepositos}
+                        rotuloNeg={rotuloRetiradas}
                         depositos={movPorPoupanca.get(p.id)?.depositos ?? 0}
                         retiradas={movPorPoupanca.get(p.id)?.retiradas ?? 0}
                         onAbrir={() => setPagina({ tela: 'poupanca', poupanca: p })}

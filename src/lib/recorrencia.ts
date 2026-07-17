@@ -559,6 +559,50 @@ export function faturaNoMes(
   return total;
 }
 
+/** Fatura por CONTA PAGADORA no mês alvo, como valor de SAÍDA (sempre ≥ 0).
+ *
+ *  No eixo de fluxo de caixa (§4.8) a fatura É a soma das compras do cartão
+ *  saindo da conta pagadora — logo pesa como saída DELA. Os cards da aba Contas
+ *  (§5.6) usam isto para que Entradas/Saídas fechem com o saldo (que já debita a
+ *  fatura via saldoAcumuladoPorConta). Antes só lançamentos de débito e
+ *  transferências entravam nos dois números; a fatura ficava de fora e o card
+ *  mentia (saldo −7k, saídas 0).
+ *
+ *  `corte` (ISO, opcional): só conta a fatura se o dia em que ela PESA (efetivo
+ *  ou padrão) for ≤ corte — a mesma régua do saldo no mês corrente (foto de
+ *  hoje). Sem corte, conta a fatura inteira do mês (previsão inclusa) — coerente
+ *  com o mês futuro projetado. Espelha exatamente liquidoDoMesPorConta. */
+export function faturaSaidaPorConta(
+  lancamentos: Lancamento[],
+  cartoes: Cartao[],
+  alvoAno: number,
+  alvoMes: number,
+  hoje: Date,
+  excecoes?: IndiceExcecoes,
+  pagamentos?: IndicePagamentos,
+  corte?: string,
+): Map<string, number> {
+  const m = new Map<string, number>();
+  const alvoAbs = indiceMes(alvoAno, alvoMes);
+  for (const k of cartoes) {
+    const peso = faturaNoMes(lancamentos, k, alvoAno, alvoMes, hoje, excecoes, pagamentos);
+    if (peso === 0) continue;
+    if (corte != null) {
+      // Descobre o dia em que a fatura pesa neste mês (ciclo padrão e vizinhos).
+      const cicloPadrao = k.dia_pagamento > k.dia_fechamento ? alvoAbs : alvoAbs - 1;
+      let diaPeso: number | null = null;
+      for (const c of [cicloPadrao - 1, cicloPadrao, cicloPadrao + 1]) {
+        if (c < 0) continue;
+        const pos = posicaoFatura(k, c, pagamentos);
+        if (pos.mesAbs === alvoAbs) { diaPeso = pos.dia; break; }
+      }
+      if (diaPeso != null && montaISO(alvoAno, alvoMes, diaPeso) > corte) continue;
+    }
+    m.set(k.conta_id, (m.get(k.conta_id) ?? 0) + peso);
+  }
+  return m;
+}
+
 /** Dia do mês em que a fatura de um cartão pesa no saldo. Sem pagamento
  *  efetivo, é o `dia_pagamento` com clamp (§4.1); usado pela lista para
  *  posicionar a linha. Mantido por compatibilidade — a lista agora usa
