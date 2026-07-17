@@ -1015,17 +1015,30 @@ export function fluxoDoMes(
  * Saldo de cada poupança (§5.4) — quanto está guardado em cada `conta` de
  * tipo poupança. É patrimônio real acumulado: soma dos DEPÓSITOS (transferência
  * que chega na poupança) menos as RETIRADAS (que saem dela), sobre todas as
- * ocorrências desde a âncora até o mês corrente (inclusive). Transferência
+ * ocorrências desde a âncora até o mês alvo (inclusive). Transferência
  * poupança↔poupança move entre duas poupanças (debita uma, credita outra).
  *
- * Não projeta futuro: o "guardado" é o que já foi movido de fato. Devolve um
- * mapa poupanca_id → saldo, com toda poupança presente (mesmo zerada). O total
- * do Cofre é a soma dos valores deste mapa.
+ * Devolve um mapa poupanca_id → saldo, com toda poupança presente (mesmo
+ * zerada). O total do Cofre é a soma dos valores deste mapa.
+ *
+ * `alvoAno`/`alvoMes` (opcionais): mês até o qual acumular. Default = mês
+ * corrente — a "foto do presente" da tela de gestão do Cofre (§5.4), que não
+ * navega. A aba Contas → Cofre (§5.6, Item 2) passa o mês exibido para o saldo
+ * seguir a navegação, igual às contas-corrente.
+ *
+ * `corte` (ISO, opcional): aplicado só ao mês alvo — corta movimentos com data
+ * > corte (saldo vivo do mês corrente). Meses passados entram inteiros (fato);
+ * mês futuro sem corte projeta o mês inteiro (herdado + transferências
+ * programadas, §4.1). A aba Contas passa corte só quando o mês exibido é o
+ * corrente. Sem corte (default), acumula o mês alvo inteiro.
  */
 export function saldoPorPoupanca(
   transferencias: Transferencia[],
   contas: Conta[],
   hoje: Date,
+  alvoAno?: number,
+  alvoMes?: number,
+  corte?: string,
 ): Map<string, number> {
   const tipoConta = new Map(contas.map((c) => [c.id, c.tipo]));
   const acc = new Map<string, number>();
@@ -1035,12 +1048,17 @@ export function saldoPorPoupanca(
   const ancora = acharAncora([], transferencias);
   if (!ancora) return acc;
 
+  const anoFim = alvoAno ?? hoje.getFullYear();
+  const mesFim = alvoMes ?? hoje.getMonth();
   const inicio = mesAbs(ancora.ano, ancora.mes);
-  const fim = mesAbs(hoje.getFullYear(), hoje.getMonth()); // até o mês corrente
+  const fim = mesAbs(anoFim, mesFim); // inclusivo: acumula ATÉ o mês alvo
+  if (fim < inicio) return acc; // mês alvo anterior à âncora → nada guardado ainda
   for (let abs = inicio; abs <= fim; abs++) {
     const ano = Math.floor(abs / 12);
     const mes = abs % 12;
+    const corteAqui = abs === fim ? corte : undefined; // corte só no mês alvo
     for (const o of transferenciasNoMes(transferencias, ano, mes, hoje)) {
+      if (corteAqui != null && o.data > corteAqui) continue; // ainda não aconteceu
       const destinoPoup = tipoConta.get(o.para_conta_id) === 'poupanca';
       const origemPoup = tipoConta.get(o.de_conta_id) === 'poupanca';
       if (destinoPoup) acc.set(o.para_conta_id, (acc.get(o.para_conta_id) ?? 0) + o.valor);

@@ -23,6 +23,10 @@ type ContaProps = Base & {
    *  atual + entradas/saídas, sobre fundo neutro). Ausente = card cheio com
    *  testeira (Gerenciar Contas). Dívida temporária, como o cartão. */
   compacto?: boolean;
+  /** Rótulo do saldo, no compacto. Muda com o mês navegado (Item 2/§5.6):
+   *  "Saldo Atual" (corrente) · "Saldo Final" (passado) · "Saldo Previsto"
+   *  (futuro). Ausente = "Saldo Atual". */
+  rotuloSaldo?: string;
 };
 type PoupancaProps = Base & {
   tipo: 'poupanca';
@@ -35,6 +39,9 @@ type PoupancaProps = Base & {
   depositos?: number;
   /** Retiradas do mês exibido (só no compacto). */
   retiradas?: number;
+  /** Rótulo do saldo, no compacto. Muda com o mês (Item 2): "Guardado"
+   *  (corrente) · "Guardado (fim do mês)" passado/futuro. Ausente = "Guardado". */
+  rotuloSaldo?: string;
   /** Se presente, o card abre o drill-down da poupança ao tocar (§5.4). */
   onAbrir?: () => void;
 };
@@ -135,7 +142,12 @@ function EntidadeCompacta(props: ContaProps | PoupancaProps) {
   const poupanca = props.tipo === 'poupanca';
   const onAbrir = poupanca ? props.onAbrir : undefined;
   const icone = poupanca ? props.icone : props.banco;
-  const rotuloSaldo = poupanca ? 'Guardado' : 'Saldo Atual';
+  // Poupança e conta usam bibliotecas de ícone distintas: poupança resolve pela
+  // grade temática de objetivos (ICONES_POUPANCA, mesma do SlotIconePoupanca);
+  // conta pela biblioteca de logos de banco (LogoBanco). Antes o compacto forçava
+  // tudo por LogoBanco, e a chave de poupança não existia lá — ícone sumia.
+  const IconePoup = poupanca && icone ? ICONES_POUPANCA[icone] : null;
+  const rotuloSaldo = props.rotuloSaldo ?? (poupanca ? 'Guardado' : 'Saldo Atual');
   const rotuloPos = poupanca ? 'Depositos' : 'Entradas';
   const rotuloNeg = poupanca ? 'Retiradas' : 'Saídas';
   const positivo = poupanca ? props.depositos ?? 0 : props.entradas;
@@ -165,7 +177,9 @@ function EntidadeCompacta(props: ContaProps | PoupancaProps) {
             color: tema ? 'var(--theme-text)' : 'var(--text-primary)',
           }}
         >
-          {icone ? <LogoBanco chave={icone} tamanho={34} /> : <IconeImage tamanho={30} />}
+          {poupanca
+            ? (IconePoup ? <IconePoup tamanho={34} /> : <IconeImage tamanho={30} />)
+            : (icone ? <LogoBanco chave={icone} tamanho={34} /> : <IconeImage tamanho={30} />)}
         </span>
         <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, color: 'var(--text-primary)' }}>
           <span className="type-numeric" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>

@@ -280,30 +280,55 @@ export function Home() {
 
   // Entradas/saídas por conta no MÊS EXIBIDO — cards da aba Contas da Home
   // (acompanha a navegação de mês). Débito puro já vem filtrado (§4.8).
+  //
+  // Inclui TRANSFERÊNCIAS que tocam a conta (decisão "A", §5.6): o que chega
+  // conta como entrada DELA, o que sai como saída DELA. É propriedade da conta,
+  // não do casal — corrente↔corrente continua neutra no Relatório (§4.7); aqui,
+  // na visão por conta, precisa aparecer para os números baterem com o saldo.
+  // Poupança fica de fora deste mapa (só correntes); os cards de poupança usam
+  // movPorPoupanca, que já soma as transferências como Depósitos/Retiradas.
   const porConta = useMemo(() => {
     const m = new Map<string, { entradas: number; saidas: number }>();
+    const tipoPorId = new Map(contas.map((c) => [c.id, c.tipo]));
+    const bump = (id: string, campo: 'entradas' | 'saidas', v: number) => {
+      if (tipoPorId.get(id) !== 'corrente') return; // só correntes têm card aqui
+      const acc = m.get(id) ?? { entradas: 0, saidas: 0 };
+      acc[campo] += v;
+      m.set(id, acc);
+    };
     for (const o of ocorrenciasLista) {
-      const acc = m.get(o.conta_id) ?? { entradas: 0, saidas: 0 };
-      if (o.tipo === 'entrada') acc.entradas += o.valor; else acc.saidas += o.valor;
-      m.set(o.conta_id, acc);
+      bump(o.conta_id, o.tipo === 'entrada' ? 'entradas' : 'saidas', o.valor);
+    }
+    for (const t of transferenciasLista) {
+      bump(t.para_conta_id, 'entradas', t.valor); // chegou nesta conta
+      bump(t.de_conta_id, 'saidas', t.valor); // saiu desta conta
     }
     return m;
-  }, [ocorrenciasLista]);
+  }, [ocorrenciasLista, transferenciasLista, contas]);
 
   // Entradas/saídas por conta no MÊS ATUAL real (não o exibido) — tela de
   // Gerenciar Contas, que não tem seletor de mês: mostra sempre o corrente.
+  // Mesma regra "A" do porConta: inclui transferências que tocam a conta.
   const porContaMesAtual = useMemo(() => {
     const ocs = lancamentosNoMes(
       lancamentos, hoje.getFullYear(), hoje.getMonth(), hoje, indiceExcecoes,
     ).filter((o) => o.cartao_id == null);
+    const transfs = transferenciasNoMes(transferencias, hoje.getFullYear(), hoje.getMonth(), hoje);
     const m = new Map<string, { entradas: number; saidas: number }>();
-    for (const o of ocs) {
-      const acc = m.get(o.conta_id) ?? { entradas: 0, saidas: 0 };
-      if (o.tipo === 'entrada') acc.entradas += o.valor; else acc.saidas += o.valor;
-      m.set(o.conta_id, acc);
+    const tipoPorId = new Map(contas.map((c) => [c.id, c.tipo]));
+    const bump = (id: string, campo: 'entradas' | 'saidas', v: number) => {
+      if (tipoPorId.get(id) !== 'corrente') return;
+      const acc = m.get(id) ?? { entradas: 0, saidas: 0 };
+      acc[campo] += v;
+      m.set(id, acc);
+    };
+    for (const o of ocs) bump(o.conta_id, o.tipo === 'entrada' ? 'entradas' : 'saidas', o.valor);
+    for (const t of transfs) {
+      bump(t.para_conta_id, 'entradas', t.valor);
+      bump(t.de_conta_id, 'saidas', t.valor);
     }
     return m;
-  }, [lancamentos, hoje, indiceExcecoes]);
+  }, [lancamentos, transferencias, contas, hoje, indiceExcecoes]);
   // Saldo acumulado por conta (§4.7) até o mês ATUAL — cards da tela Gerenciar
   // Contas. Invariante: soma das correntes == saldo do topo. A fatura de cada
   // cartão debita a conta pagadora (cartao.conta_id).
@@ -314,7 +339,10 @@ export function Home() {
     ),
     [lancamentos, transferencias, contas, cartoes, hoje, indiceExcecoes, indicePagamentos],
   );
-  // Saldo guardado por poupança (§5.4) — cards do Cofre e hero do drill-down.
+  // Saldo guardado por poupança HOJE (§5.4) — foto do presente, para a tela de
+  // gestão do Cofre (TOTAL GUARDADO) e o hero do drill-down, que NÃO navegam mês.
+  // A aba Contas → Cofre usa saldosPorPoupancaMesExibido (mais abaixo), que segue
+  // o mês navegado (Item 2).
   const saldosPorPoupanca = useMemo(
     () => saldoPorPoupanca(transferencias, contas, hoje),
     [transferencias, contas, hoje],
@@ -341,23 +369,45 @@ export function Home() {
     }
     return m;
   }, [transferenciasLista, poupancas]);
-  // Saldo por conta para a aba CARTEIRA — a "foto de hoje" (§5.6). Passamos
-  // sempre o corte = hoje: no mês corrente corta em hoje (só o que já
-  // aconteceu; salário do dia 30 não conta até cair); meses passados entram
-  // inteiros (tudo já é ≤ hoje, o corte não remove nada); mês futuro sobra só o
-  // herdado (todo movimento do mês futuro é > hoje). Um único parâmetro cobre os
-  // três casos — o corte só morde o mês alvo, e o alvo é o mês exibido.
+  // Saldo por conta na aba Contas (§5.6, Item 2) — o número muda de SIGNIFICADO
+  // conforme o mês navegado, alinhando o saldo ao mês que se olha:
+  //   • mês CORRENTE → saldo vivo (corte = hoje): fato até hoje + o que já rolou
+  //     no mês; salário do dia 30 ainda não conta. É a "foto do presente".
+  //   • mês PASSADO → consolidado do fim do mês (sem corte): tudo já é fato.
+  //   • mês FUTURO → projeção do fim do mês inteiro (sem corte): herdado + tudo
+  //     que o motor projeta cair no mês (§4.1). Antes, o corte fixo em hoje
+  //     zerava a projeção e sobrava só o herdado — o "não faz sentido" ao navegar.
+  // O corte, portanto, só se aplica quando o mês exibido É o corrente.
+  const ehMesCorrente = ano === hoje.getFullYear() && mes === hoje.getMonth();
+  // Rótulo do saldo acompanha o significado do número (Item 2): vivo no corrente,
+  // consolidado no passado, previsto no futuro — senão "Saldo Atual" mentiria num
+  // mês que não tem "hoje".
+  const mesExibidoAbs = ano * 12 + mes;
+  const mesCorrenteAbs = hoje.getFullYear() * 12 + hoje.getMonth();
+  const ehMesFuturo = mesExibidoAbs > mesCorrenteAbs;
+  const rotuloSaldoConta = ehMesCorrente ? 'Saldo Atual' : ehMesFuturo ? 'Saldo Previsto' : 'Saldo Final';
+  const rotuloSaldoPoup = ehMesCorrente ? 'Guardado' : ehMesFuturo ? 'Guardado Previsto' : 'Guardado (fim)';
   const corteHoje = useMemo(() => {
     const mm = String(hoje.getMonth() + 1).padStart(2, '0');
     const dd = String(hoje.getDate()).padStart(2, '0');
     return `${hoje.getFullYear()}-${mm}-${dd}`;
   }, [hoje]);
+  const corteSaldoConta = ehMesCorrente ? corteHoje : undefined;
   const saldosPorContaMesExibido = useMemo(
     () => saldoAcumuladoPorConta(
       lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes, indicePagamentos,
-      corteHoje,
+      corteSaldoConta,
     ),
-    [lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes, indicePagamentos, corteHoje],
+    [lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes, indicePagamentos, corteSaldoConta],
+  );
+  // Saldo guardado por poupança no MÊS EXIBIDO (§5.6, aba Contas → Cofre, Item 2)
+  // — mesma régua de três casos da corrente: mês corrente corta em hoje (vivo),
+  // passado é consolidado, futuro projeta o mês inteiro (herdado + transferências
+  // programadas). Sem transferência agendada num mês futuro, o Guardado previsto
+  // é exatamente o herdado. Distinto de saldosPorPoupanca (foto de hoje, gestão).
+  const saldosPorPoupancaMesExibido = useMemo(
+    () => saldoPorPoupanca(transferencias, contas, hoje, ano, mes, corteSaldoConta),
+    [transferencias, contas, hoje, ano, mes, corteSaldoConta],
   );
   // Saldo herdado: acumulado desde a âncora (1º registro) até o mês anterior
   // (§4.7). Calculado na leitura e memoizado — barato porque expande regras,
@@ -681,6 +731,7 @@ export function Home() {
                           valor={saldosPorContaMesExibido.get(c.id) ?? 0}
                           tema={c.tema ?? undefined}
                           banco={c.icone}
+                          rotuloSaldo={rotuloSaldoConta}
                           entradas={porConta.get(c.id)?.entradas ?? 0}
                           saidas={porConta.get(c.id)?.saidas ?? 0}
                         />
@@ -699,9 +750,10 @@ export function Home() {
                         tipo="poupanca"
                         compacto
                         nome={p.nome}
-                        valor={saldosPorPoupanca.get(p.id) ?? 0}
+                        valor={saldosPorPoupancaMesExibido.get(p.id) ?? 0}
                         tema={p.tema ?? undefined}
                         icone={p.icone}
+                        rotuloSaldo={rotuloSaldoPoup}
                         depositos={movPorPoupanca.get(p.id)?.depositos ?? 0}
                         retiradas={movPorPoupanca.get(p.id)?.retiradas ?? 0}
                         onAbrir={() => setPagina({ tela: 'poupanca', poupanca: p })}
