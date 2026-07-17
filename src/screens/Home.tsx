@@ -8,6 +8,7 @@ import {
   indexarPagamentos,
   saldoHerdado,
   liquidoDoMes,
+  entradasSaidasDoMes,
   faturaNoMes,
   faturaSaidaPorConta,
   realizadoDoCiclo,
@@ -270,14 +271,19 @@ export function Home() {
     [categoriasRelatorio, recorte.total],
   );
 
-  // Totais do mês (§4.7). Herdado virá do saldo contínuo; por ora 0.
-  const { entradas, saidas } = useMemo(() => {
-    let e = 0, s = 0;
-    for (const o of ocorrenciasLista) {
-      if (o.tipo === 'entrada') e += o.valor; else s += o.valor;
-    }
-    return { entradas: e, saidas: s };
-  }, [ocorrenciasLista]);
+  // Entradas/Saídas do card de resumo (§5.1/§5.5) — eixo de FLUXO DE CAIXA, a
+  // decomposição de liquidoDoMes em dois baldes. Com o Herdado visível no card, a
+  // conta PRECISA fechar: herdado + entradas − saidas = saldoMes. Por isso aqui
+  // Saídas inclui a fatura de cartão (data de pagamento) e o depósito em poupança
+  // — não é o eixo de consumo. Mesmos argumentos do liquidoMes (sem pagamentos)
+  // para nunca divergir dele. NÃO confundir com "Para onde foi o dinheiro"
+  // (consumo, data da compra, fatura explodida nas categorias) — os dois diferem
+  // de propósito (§4.8). Antes, Saídas era só lançamento de débito e a conta do
+  // card não fechava (faltava a fatura).
+  const { entradas, saidas } = useMemo(
+    () => entradasSaidasDoMes(lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes),
+    [lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes],
+  );
 
   // Discriminador de mês (Item 2) e corte da foto de hoje. Usados pelos cards da
   // aba Contas: o corte só se aplica no mês corrente (vivo até hoje); passado é

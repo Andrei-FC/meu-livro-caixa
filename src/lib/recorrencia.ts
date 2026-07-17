@@ -820,6 +820,59 @@ export function liquidoDoMes(
 }
 
 /**
+ * Entradas e saídas do mês no eixo de FLUXO DE CAIXA (§4.8) — a decomposição do
+ * `liquidoDoMes` em dois baldes, para o card de resumo (§5.1/§5.5). Garante, por
+ * construção, que `entradas − saidas === liquidoDoMes`, logo
+ * `herdado + entradas − saidas === saldoMes` — a aritmética que o card mostra
+ * (com o Herdado visível) FECHA.
+ *
+ *  entradas = entradas de débito + retiradas de poupança (creditam o disponível)
+ *  saidas   = saídas de débito + faturas de cartão (data de pagamento)
+ *             + depósitos em poupança (debitam o disponível)
+ *
+ * NÃO confundir com o eixo de CONSUMO ("Para onde foi o dinheiro", §4.8), que lê
+ * pela data da compra e explode a fatura nas categorias — aquela lista não soma
+ * o mesmo que estas saídas, e é correto que difira (dois eixos, §4.8). Usa os
+ * MESMOS argumentos e primitivas do liquidoDoMes para nunca divergir dele.
+ */
+export function entradasSaidasDoMes(
+  lancamentos: Lancamento[],
+  transferencias: Transferencia[],
+  contas: Conta[],
+  cartoes: Cartao[],
+  alvoAno: number,
+  alvoMes: number,
+  hoje: Date,
+  excecoes?: IndiceExcecoes,
+  pagamentos?: IndicePagamentos,
+): { entradas: number; saidas: number } {
+  const tipoConta = new Map(contas.map((c) => [c.id, c.tipo]));
+  let entradas = 0;
+  let saidas = 0;
+
+  // Lançamentos de conta-corrente (cartão pesa pela fatura, abaixo).
+  for (const o of lancamentosNoMes(lancamentos, alvoAno, alvoMes, hoje, excecoes)) {
+    if (o.cartao_id != null) continue;
+    if (o.tipo === 'entrada') entradas += o.valor; else saidas += o.valor;
+  }
+
+  // Faturas de cartão que vencem no mês → saída (data de pagamento, §4.8).
+  for (const k of cartoes) {
+    saidas += faturaNoMes(lancamentos, k, alvoAno, alvoMes, hoje, excecoes, pagamentos);
+  }
+
+  // Transferências com poupança: depósito é saída, retirada é entrada (§4.5).
+  for (const o of transferenciasNoMes(transferencias, alvoAno, alvoMes, hoje)) {
+    const destinoPoupanca = tipoConta.get(o.para_conta_id) === 'poupanca';
+    const origemPoupanca = tipoConta.get(o.de_conta_id) === 'poupanca';
+    if (destinoPoupanca && !origemPoupanca) saidas += o.valor;
+    else if (origemPoupanca && !destinoPoupanca) entradas += o.valor;
+  }
+
+  return { entradas, saidas };
+}
+
+/**
  * Saldo herdado de um mês: acumulado desde a âncora até o mês ANTERIOR ao alvo.
  * Antes da âncora (ou sem âncora) = 0. Itera mês a mês — barato porque são
  * regras, não linhas. A Home memoiza por (ano,mes).
