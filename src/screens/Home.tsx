@@ -125,7 +125,7 @@ export function Home() {
     setErro(null);
     return Promise.all([
       supabase.from('contas').select('*').is('arquivada_em', null).order('criada_em'),
-      supabase.from('cartoes').select('*').order('criado_em'),
+      supabase.from('cartoes').select('*').is('arquivado_em', null).order('criado_em'),
       supabase.from('lancamentos').select('*').order('data'),
       supabase.from('excecoes_serie').select('*'),
       supabase.from('transferencias').select('*'),

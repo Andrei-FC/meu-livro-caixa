@@ -25,6 +25,7 @@ export interface Cartao {
   tema: string | null;
   banco: string | null; // chave da biblioteca de bancos (§4.9)
   bandeira: string | null; // chave da biblioteca de bandeiras (§4.9)
+  arquivado_em: string | null; // null = ativo; preenchido = arquivado (§4.10)
   criado_em: string;
 }
 
