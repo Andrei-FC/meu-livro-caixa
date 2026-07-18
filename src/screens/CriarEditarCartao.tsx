@@ -48,8 +48,13 @@ export function CriarEditarCartao({ cartao, contas, onVoltar, onSalvou }: Props)
   const correntes = contas.filter((c) => c.tipo === 'corrente');
   const [nome, setNome] = useState(cartao?.nome ?? '');
   const [digitos, setDigitos] = useState(cartao ? reaisParaCentavos(cartao.previsao_mensal) : '');
-  const [fechaDia, setFechaDia] = useState(cartao ? String(cartao.dia_fechamento) : '');
+  // Fase 1 — entrada por "N dias antes do vencimento" (só tela; grava o mesmo
+  // dia_fechamento inteiro de hoje). Na edição a conta reversa é exata porque
+  // nesta fase fechamento e vencimento estão no mesmo mês (dia_pagamento − dia_fechamento).
   const [venceDia, setVenceDia] = useState(cartao ? String(cartao.dia_pagamento) : '');
+  const [diasAntes, setDiasAntes] = useState(
+    cartao ? String(cartao.dia_pagamento - cartao.dia_fechamento) : '',
+  );
   const [contaId, setContaId] = useState<string | null>(
     cartao?.conta_id ?? (correntes.length === 1 ? correntes[0].id : null),
   );
@@ -68,8 +73,16 @@ export function CriarEditarCartao({ cartao, contas, onVoltar, onSalvou }: Props)
   // campo de volta ao estado "sem previsão" e nunca fica preso numa meta R$ 0.
   const temPrevisao = digitos.replace(/0/g, '') !== '';
   const previsao = temPrevisao ? centavosParaReais(digitos) : null;
+
+  // Fase 1: dia_fechamento derivado (dia_pagamento − N). Trava: N ≥ 1 e o
+  // fechamento precisa cair no mesmo mês do vencimento (venceDia − N ≥ 1). O
+  // caso "furar o mês" (vencimento no início) é Fase 2 — bloqueado aqui.
+  const nDias = diasAntes === '' ? null : Number(diasAntes);
+  const venceN = venceDia === '' ? null : Number(venceDia);
+  const fechamentoNoMes = nDias !== null && venceN !== null && venceN - nDias >= 1;
+  const diasValido = nDias !== null && nDias >= 1 && fechamentoNoMes;
   const podeSalvar =
-    nome.trim().length > 0 && fechaDia !== '' && venceDia !== '' && contaId !== null && !salvando;
+    nome.trim().length > 0 && venceDia !== '' && diasValido && contaId !== null && !salvando;
 
   async function salvar() {
     setErro(null);
@@ -79,7 +92,7 @@ export function CriarEditarCartao({ cartao, contas, onVoltar, onSalvou }: Props)
         nome: nome.trim(),
         conta_id: contaId,
         previsao_mensal: previsao,
-        dia_fechamento: Number(fechaDia),
+        dia_fechamento: Number(venceDia) - Number(diasAntes),
         dia_pagamento: Number(venceDia),
         tema,
         banco,
@@ -101,16 +114,19 @@ export function CriarEditarCartao({ cartao, contas, onVoltar, onSalvou }: Props)
     }
   }
 
-  async function apagar() {
+  async function arquivar() {
     setErro(null);
     setSalvando(true);
     try {
-      const { error } = await supabase.from('cartoes').delete().eq('id', cartao!.id);
+      const { error } = await supabase
+        .from('cartoes')
+        .update({ arquivado_em: new Date().toISOString() })
+        .eq('id', cartao!.id);
       if (error) throw error;
       onSalvou();
       onVoltar();
     } catch (e) {
-      setErro(e instanceof Error ? e.message : 'Não foi possível apagar (o cartão pode ter lançamentos).');
+      setErro(e instanceof Error ? e.message : 'Erro ao arquivar.');
     } finally {
       setSalvando(false);
     }
@@ -157,26 +173,33 @@ export function CriarEditarCartao({ cartao, contas, onVoltar, onSalvou }: Props)
           />
         </div>
 
-        {/* Fecha dia · Vence dia (lado a lado) */}
-        <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
-          <div style={{ flex: 1 }}>
-            <Input
-              label="Fecha dia"
-              value={fechaDia}
-              onChange={(e) => setFechaDia(clampDia(e.target.value))}
-              inputMode="numeric"
-              placeholder="28"
-            />
+        {/* Vence dia · Fecha N dias antes (Fase 1: entrada por N; grava dia_fechamento = venceDia − N) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
+            <div style={{ flex: 1 }}>
+              <Input
+                label="Vence dia"
+                value={venceDia}
+                onChange={(e) => setVenceDia(clampDia(e.target.value))}
+                inputMode="numeric"
+                placeholder="05"
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Input
+                label="Fecha (dias antes)"
+                value={diasAntes}
+                onChange={(e) => setDiasAntes(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                inputMode="numeric"
+                placeholder="7"
+              />
+            </div>
           </div>
-          <div style={{ flex: 1 }}>
-            <Input
-              label="Vence dia"
-              value={venceDia}
-              onChange={(e) => setVenceDia(clampDia(e.target.value))}
-              inputMode="numeric"
-              placeholder="05"
-            />
-          </div>
+          {venceDia !== '' && diasAntes !== '' && !fechamentoNoMes && (
+            <span className="type-caption" style={{ color: 'var(--value-saida)' }}>
+              Nesta versão o fechamento precisa cair no mesmo mês do vencimento.
+            </span>
+          )}
         </div>
 
         {/* Conta que paga a fatura (§4.4/§4.5) — abre o seletor de contas */}
@@ -249,12 +272,13 @@ export function CriarEditarCartao({ cartao, contas, onVoltar, onSalvou }: Props)
 
         {erro && <span className="type-caption" style={{ color: 'var(--value-saida)' }}>{erro}</span>}
 
-        {/* Apagar (só em edição) — §4.10. Dentro do corpo, no fim: fica atrás do
-            Salvar fixo e exige rolar para alcançar (anti-toque-acidental). */}
+        {/* Arquivar (só em edição) — §4.10. Espelha CriarEditarConta: preserva
+            passado E futuro (parcelas em curso). Dentro do corpo, no fim: fica
+            atrás do Salvar fixo e exige rolar para alcançar (anti-toque-acidental). */}
         {editando && (
           <div style={{ marginTop: 'var(--space-md)' }}>
-            <Botao hierarquia="secondary" onClick={apagar} disabled={salvando} style={{ color: 'var(--value-saida)' }}>
-              Apagar cartão
+            <Botao hierarquia="secondary" onClick={arquivar} disabled={salvando} style={{ color: 'var(--value-saida)' }}>
+              Arquivar cartão
             </Botao>
           </div>
         )}
