@@ -538,6 +538,8 @@ export function Home() {
         cartao={pagina.cartao}
         contas={contas}
         ciclos={pagina.cartao ? ciclos.filter((c) => c.cartao_id === pagina.cartao!.id) : []}
+        lancamentos={lancamentos}
+        excecoes={indiceExcecoes}
         hoje={hoje}
         onVoltar={() => setPagina({ tela: 'gerenciar-cartoes' })}
         onSalvou={() => { carregar(); }}

@@ -493,19 +493,82 @@ function cicloDeFechamentoAbs(dataISO: string, cartao: Cartao, ciclos?: IndiceCi
   return d < fechBase ? base : base + 1;
 }
 
-/** Âncora DERIVADA de uma mudança de regime (Fase 2b, doc-fase2 "A âncora da
- *  mudança é DERIVADA, não digitada"): o `desde_ciclo_abs` a partir do qual o
- *  regime NOVO passa a valer.
+/** PISO de uma mudança de regime (Fase 2b, adendo Mudança 3): o menor
+ *  `desde_ciclo_abs` que o usuário pode escolher ao mudar as datas de um cartão.
+ *  NÃO é a âncora — a âncora vem da DATA CONCRETA escolhida no date picker
+ *  (`ancoraDeVencimento`). O piso só trava o picker.
  *
- *  Regra: o ciclo em curso (o que ainda vai fechar sob a regra VELHA) termina
- *  intacto; o regime novo vale do PRÓXIMO ciclo de fechamento. Isto é
- *  `cicloDeFechamentoAbs(hoje, regime_velho) + 1` — o ciclo de fechamento de hoje
- *  é o aberto/em-curso; +1 é o primeiro que nasce sob a regra nova. Garante por
- *  construção que nada do passado (nem o ciclo aberto) se mexe, e que não há dois
- *  vencimentos encavalados (§ doc-fase2). */
-export function ancoraMudancaDeRegime(cartao: Cartao, hoje: Date, ciclos?: IndiceCiclos): number {
+ *  Regra (dinâmica pelo momento do fechamento): é o PRIMEIRO ciclo cujo
+ *  fechamento ainda não ocorreu. `cicloDeFechamentoAbs(hoje, regimeVelho)` já
+ *  devolve exatamente isso — o ciclo do próprio mês enquanto hoje está antes do
+ *  fechamento, e o do mês seguinte a partir do dia de fechamento (inclusive).
+ *  Reflete a regra do banco: enquanto a fatura não fechou dá para remanejá-la;
+ *  depois de fechar virou obrigação a pagar e é intocável. (Sem `+1`: o `+1` da
+ *  versão derivada anterior empurrava tudo um mês à frente — era o bug que
+ *  desencontrava o app do banco.) */
+export function pisoMudancaDeRegime(cartao: Cartao, hoje: Date, ciclos?: IndiceCiclos): number {
   const hojeISO = montaISO(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
-  return cicloDeFechamentoAbs(hojeISO, cartao, ciclos) + 1;
+  return cicloDeFechamentoAbs(hojeISO, cartao, ciclos);
+}
+
+/** Converte a DATA CONCRETA de próximo vencimento (escolhida no date picker) no
+ *  `desde_ciclo_abs` a partir do qual o regime novo vale (Fase 2b, Mudança 2).
+ *  A data escolhida É a fonte da verdade da âncora — o banco define um fato
+ *  ("vence 15/ago"), não uma derivação. O ciclo de FECHAMENTO correspondente ao
+ *  vencimento usa a mesma regra de offset do motor (§4.8): vencimento depois do
+ *  fechamento → mesmo mês do ciclo; senão → mês seguinte. */
+export function ancoraDeVencimento(vencISO: string, diaFechamento: number, diaPagamento: number): number {
+  const [a, m] = parteData(vencISO);
+  const mesVencAbs = indiceMes(a, m);
+  return diaPagamento > diaFechamento ? mesVencAbs : mesVencAbs - 1;
+}
+
+/** Prévia da migração de faturas ao mudar o dia de FECHAMENTO (Fase 2b, Mudança
+ *  3b). Muda de fechamento reclassifica lançamentos do ciclo corrente que cruzam
+ *  a nova fronteira: o motor faz isso automaticamente e corretamente, mas o valor
+ *  de uma fatura muda em relação ao que o usuário esperava — então mostramos um
+ *  aviso explícito (princípios 3 e 4) antes de confirmar.
+ *
+ *  Compara, para os lançamentos do cartão que caem no ciclo corrente (o piso —
+ *  onde a mudança vai valer), o ciclo atribuído sob o regime VELHO vs. o NOVO.
+ *  Os que diferem são os que migram. Retorna quantos entram e quantos saem do
+ *  ciclo-alvo. `desdeAbs` é a âncora da mudança (ciclo onde o regime novo passa
+ *  a valer). Não altera nada — é só leitura para o aviso. */
+export function migracaoAoMudarFechamento(
+  lancamentos: Lancamento[],
+  cartaoBase: Cartao,
+  desdeAbs: number,
+  fechNovo: number,
+  pagNovo: number,
+  hoje: Date,
+  excecoes?: IndiceExcecoes,
+): { entram: number; saem: number } {
+  // Cartões sintéticos: só os campos de dia importam para cicloDeFechamentoAbs,
+  // e sem índice de ciclos ambos caem no regime-base (os dias que passamos).
+  const velho: Cartao = { ...cartaoBase };
+  const novo: Cartao = { ...cartaoBase, dia_fechamento: fechNovo, dia_pagamento: pagNovo };
+
+  // Lançamentos do cartão que, sob o regime NOVO, pertenceriam ao ciclo-alvo
+  // (desdeAbs). Varremos uma janela generosa de meses ao redor (o ciclo pode ser
+  // ponte). Para cada um, comparamos o ciclo sob velho vs novo.
+  const doCartao = lancamentos.filter((l) => l.cartao_id === cartaoBase.id);
+  let entram = 0;
+  let saem = 0;
+  for (let mAbs = desdeAbs - JANELA_CICLO_MESES; mAbs <= desdeAbs + JANELA_CICLO_MESES; mAbs++) {
+    if (mAbs < 0) continue;
+    const ano = Math.floor(mAbs / 12);
+    const mes = mAbs % 12;
+    for (const oc of lancamentosNoMes(doCartao, ano, mes, hoje, excecoes)) {
+      const cVelho = cicloDeFechamentoAbs(oc.data, velho); // sem ciclos: regime-base = dias velhos
+      const cNovo = cicloDeFechamentoAbs(oc.data, novo);
+      if (cVelho === cNovo) continue; // não migrou
+      // Entra no alvo: sob o novo passa a pertencer ao ciclo-alvo, sob o velho não.
+      if (cNovo === desdeAbs && cVelho !== desdeAbs) entram++;
+      // Sai do alvo: sob o velho pertencia ao alvo, sob o novo não.
+      else if (cVelho === desdeAbs && cNovo !== desdeAbs) saem++;
+    }
+  }
+  return { entram, saem };
 }
 
 export type FaseCiclo = 'futura' | 'aberta' | 'fechada';

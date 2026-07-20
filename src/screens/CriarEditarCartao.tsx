@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Header, Input, Botao, SeletorDeTema, CampoSeletor, SeletorDeIcone, SeletorContaCartao } from '../components';
+import { Header, Input, Botao, SeletorDeTema, CampoSeletor, SeletorDeIcone, SeletorContaCartao, ModalDeAlerta } from '../components';
 import type { ChaveTema } from '../components/SeletorDeTema';
 import { BANCOS, BANDEIRAS, LogoBanco, LogoBandeira, IconeImage, IconeChevronRight } from '../icons';
 import { formatarBR } from '../lib/formato';
 import { supabase } from '../lib/supabase';
-import { indexarCiclos, regimeDoCiclo, ancoraMudancaDeRegime } from '../lib/recorrencia';
+import { indexarCiclos, regimeDoCiclo, pisoMudancaDeRegime, ancoraDeVencimento, migracaoAoMudarFechamento } from '../lib/recorrencia';
 import type { Cartao, Conta, CartaoCiclo } from '../types/db';
 
 /**
@@ -17,14 +17,20 @@ import type { Cartao, Conta, CartaoCiclo } from '../types/db';
  * Grava em `cartoes`. `previsao_mensal` é o teto de previsão (§3.2/§4.4), nunca
  * o limite do banco.
  *
- * MUDANÇA DE DATAS (Fase 2b, doc-fase2). Editar fechamento/vencimento NÃO
- * sobrescreve mais `cartoes.dia_*` (isso reescreveria o passado — princípio 3).
- * Em vez disso grava uma linha de vigência em `cartoes_ciclos`, com âncora
- * DERIVADA (não digitada): o regime novo vale do PRÓXIMO ciclo de fechamento
- * (o ciclo em curso termina intacto sob a regra velha). Os campos exibidos
- * refletem o regime VIGENTE de hoje (respeitando qualquer mudança já agendada).
- * Editar só o "resto" (nome/previsão/tema/conta/banco/bandeira), sem mexer nas
- * datas, faz um UPDATE normal em `cartoes` e não cria regime.
+ * MUDANÇA DE DATAS (Fase 2b, adendo). Editar fechamento/vencimento NÃO
+ * sobrescreve `cartoes.dia_*` (isso reescreveria o passado — princípio 3). Em
+ * vez disso grava uma linha de vigência em `cartoes_ciclos`. Na EDIÇÃO, o
+ * vencimento é um DATE PICKER de data concreta (a próxima data de vencimento no
+ * mundo real) — essa data É a fonte da verdade da âncora (`ancoraDeVencimento`),
+ * não uma derivação de hoje. O piso do picker é dinâmico pelo fechamento
+ * (`pisoMudancaDeRegime`): não dá para ancorar num ciclo que já fechou. Mudar o
+ * fechamento pode reclassificar lançamentos do ciclo-alvo (Mudança 3b) — se
+ * algum migrar, um aviso explícito aparece antes de confirmar. Editar só o
+ * "resto" (nome/previsão/tema/conta/banco/bandeira) faz UPDATE normal em
+ * `cartoes` e não cria regime.
+ *
+ * CRIAÇÃO: inalterada (Fase 1) — vencimento é só o DIA numérico (repete sempre),
+ * fechamento em "N dias antes". Sem date picker, sem cartoes_ciclos.
  */
 
 type Props = {
@@ -33,7 +39,11 @@ type Props = {
   contas: Conta[];
   /** Regimes de ciclo já gravados PARA ESTE cartão (Fase 2b). Vazio em criação. */
   ciclos: CartaoCiclo[];
-  /** Hoje — para derivar a âncora da mudança de regime (§ doc-fase2). */
+  /** Lançamentos (todos) — para a prévia de migração de faturas (adendo 3b). */
+  lancamentos: import('../types/db').Lancamento[];
+  /** Índice de exceções de série — idem, para materializar ocorrências (3b). */
+  excecoes: import('../lib/recorrencia').IndiceExcecoes;
+  /** Hoje — para o piso do date picker de mudança de regime (adendo Mudança 3). */
   hoje: Date;
   onVoltar: () => void;
   onSalvou: () => void;
@@ -57,25 +67,50 @@ function clampDia(s: string): string {
 
 const MESES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
-export function CriarEditarCartao({ cartao, contas, ciclos, hoje, onVoltar, onSalvou }: Props) {
+/** Último dia do mês (ano, mes 0-11). */
+function ultimoDiaDoMes(ano: number, mes: number): number {
+  return new Date(ano, mes + 1, 0).getDate();
+}
+/** Monta YYYY-MM-DD a partir de (ano, mes 0-11, dia), com clamp do dia ao mês. */
+function isoDeMesDia(ano: number, mes: number, dia: number): string {
+  const d = Math.min(dia, ultimoDiaDoMes(ano, mes));
+  return `${ano}-${String(mes + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+/** Data de vencimento (ISO) de um ciclo de fechamento `cicloAbs`, dado o dia de
+ *  pagamento e a regra de offset (venc depois do fech → mesmo mês; senão +1). */
+function vencimentoISODoCiclo(cicloAbs: number, diaFech: number, diaPag: number): string {
+  const vencAbs = diaPag > diaFech ? cicloAbs : cicloAbs + 1;
+  return isoDeMesDia(Math.floor(vencAbs / 12), vencAbs % 12, diaPag);
+}
+
+export function CriarEditarCartao({ cartao, contas, ciclos, lancamentos, excecoes, hoje, onVoltar, onSalvou }: Props) {
   const editando = cartao !== null;
   const correntes = contas.filter((c) => c.tipo === 'corrente');
 
-  // Regime VIGENTE de hoje (Fase 2b): os campos de data mostram o que está em
-  // força AGORA, não o campo-base cru — assim, se já há uma mudança agendada, a
-  // tela reflete ela. Índice construído só com os ciclos deste cartão.
+  // Regime VIGENTE de hoje (Fase 2b): os campos mostram o que está em força
+  // AGORA, não o campo-base cru — se já há mudança agendada, a tela reflete ela.
   const indiceCiclos = indexarCiclos(ciclos);
   const cicloHojeAbs = cartao ? hoje.getFullYear() * 12 + hoje.getMonth() : 0;
   const regimeVigente = cartao
     ? regimeDoCiclo(cartao, cicloHojeAbs, indiceCiclos)
     : { dia_fechamento: 0, dia_pagamento: 0 };
 
+  // PISO da mudança (adendo Mudança 3): primeiro ciclo cujo fechamento ainda não
+  // ocorreu. É o menor ciclo onde a mudança pode ancorar; trava o date picker.
+  const pisoAbs = cartao ? pisoMudancaDeRegime(cartao, hoje, indiceCiclos) : 0;
+  // Data de vencimento do ciclo-piso sob o regime vigente — valor inicial e
+  // mínimo do picker (a "próxima fatura" sob a regra atual).
+  const vencPisoISO = cartao
+    ? vencimentoISODoCiclo(pisoAbs, regimeVigente.dia_fechamento, regimeVigente.dia_pagamento)
+    : '';
+
   const [nome, setNome] = useState(cartao?.nome ?? '');
   const [digitos, setDigitos] = useState(cartao ? reaisParaCentavos(cartao.previsao_mensal) : '');
-  // Entrada por "N dias antes do vencimento" (Fase 1); mostra o regime vigente
-  // (Fase 2b). A conta reversa é exata porque fechamento e vencimento estão no
-  // mesmo mês (dia_pagamento − dia_fechamento) — caso conservador da Fase 1.
+  // CRIAÇÃO: vencimento é só o DIA numérico (repete sempre) + N dias antes.
   const [venceDia, setVenceDia] = useState(cartao ? String(regimeVigente.dia_pagamento) : '');
+  // EDIÇÃO: vencimento é a DATA CONCRETA do próximo vencimento (date picker),
+  // inicializada na próxima fatura sob o regime vigente. É a fonte da âncora.
+  const [vencData, setVencData] = useState(vencPisoISO);
   const [diasAntes, setDiasAntes] = useState(
     cartao ? String(regimeVigente.dia_pagamento - regimeVigente.dia_fechamento) : '',
   );
@@ -88,49 +123,77 @@ export function CriarEditarCartao({ cartao, contas, ciclos, hoje, onVoltar, onSa
   const [sheet, setSheet] = useState<null | 'banco' | 'bandeira' | 'conta'>(null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // Aviso de migração 3b: quando há lançamentos migrando, guardamos o payload
+  // pendente e mostramos o modal; confirmar grava, cancelar volta.
+  const [avisoMigracao, setAvisoMigracao] = useState<null | { entram: number; saem: number }>(null);
 
   const contaSel = correntes.find((c) => c.id === contaId) ?? null;
 
-  // Previsão é opcional (§4.4): sem valor → null (cartão só acumula o realizado,
-  // sem barra). Só entra no cálculo quando o usuário digita algo. Dígitos só de
-  // zero ('', '0', '00'…) contam como sem previsão — assim dá para esvaziar o
-  // campo de volta ao estado "sem previsão" e nunca fica preso numa meta R$ 0.
   const temPrevisao = digitos.replace(/0/g, '') !== '';
   const previsao = temPrevisao ? centavosParaReais(digitos) : null;
 
-  // Fase 1: dia_fechamento derivado (dia_pagamento − N). Trava: N ≥ 1 e o
-  // fechamento precisa cair no mesmo mês do vencimento (venceDia − N ≥ 1). O
-  // caso "furar o mês" (vencimento no início) é Fase 2 — bloqueado aqui.
+  // Dias antes (comum às duas telas). N ≥ 1.
   const nDias = diasAntes === '' ? null : Number(diasAntes);
-  const venceN = venceDia === '' ? null : Number(venceDia);
-  const fechamentoNoMes = nDias !== null && venceN !== null && venceN - nDias >= 1;
-  const diasValido = nDias !== null && nDias >= 1 && fechamentoNoMes;
-  const podeSalvar =
-    nome.trim().length > 0 && venceDia !== '' && diasValido && contaId !== null && !salvando;
 
-  // Aviso "a partir de mmm/aaaa" (Fase 2b): quando, em edição, as datas mudam em
-  // relação ao regime vigente, a mudança NÃO vale já — vale do próximo ciclo de
-  // fechamento (o ciclo em curso termina sob a regra velha). Mostra ao usuário
-  // quando passa a valer, para nunca surpreender (princípio 4). Só calcula com
-  // datas válidas e em edição.
-  const dataMudou =
-    editando && diasValido && venceN !== null &&
-    (venceN - (nDias ?? 0) !== regimeVigente.dia_fechamento || venceN !== regimeVigente.dia_pagamento);
-  const desdeAbs = editando && cartao ? ancoraMudancaDeRegime(cartao, hoje, indiceCiclos) : 0;
-  const desdeMesTexto = dataMudou
+  // --- Validação e derivações, divergindo por modo ---
+  // CRIAÇÃO: usa venceDia numérico. Trava fechamento no mesmo mês (venceDia − N ≥ 1).
+  const venceN = venceDia === '' ? null : Number(venceDia);
+  const fechamentoNoMesCriar = nDias !== null && venceN !== null && venceN - nDias >= 1;
+
+  // EDIÇÃO: usa vencData (ISO). O dia da data escolhida é o dia_pagamento novo;
+  // fechamento = dia − N, no mesmo mês (trava idêntica à Fase 1).
+  const diaVenc = vencData ? Number(vencData.slice(8, 10)) : null;
+  const fechamentoNoMesEditar = nDias !== null && diaVenc !== null && diaVenc - nDias >= 1;
+
+  const fechamentoNoMes = editando ? fechamentoNoMesEditar : fechamentoNoMesCriar;
+  const diasValido = nDias !== null && nDias >= 1 && fechamentoNoMes;
+
+  // Datas novas resultantes (dia_fechamento / dia_pagamento do regime a gravar).
+  const novoPagamento = editando ? (diaVenc ?? 0) : Number(venceDia || 0);
+  const novoFechamento = novoPagamento - (nDias ?? 0);
+
+  // Mudou a data em relação ao regime vigente? (só edição gera regime)
+  const mudouData =
+    editando &&
+    (novoFechamento !== regimeVigente.dia_fechamento || novoPagamento !== regimeVigente.dia_pagamento);
+
+  // Âncora (edição, mudança de data): vem da DATA CONCRETA, floorada no piso.
+  const desdeAbs =
+    editando && diasValido && vencData
+      ? Math.max(ancoraDeVencimento(vencData, novoFechamento, novoPagamento), pisoAbs)
+      : 0;
+  const desdeMesTexto = mudouData
     ? `${MESES_CURTO[((desdeAbs % 12) + 12) % 12]}/${Math.floor(desdeAbs / 12)}`
     : null;
+
+  const podeSalvar =
+    nome.trim().length > 0 &&
+    (editando ? vencData !== '' : venceDia !== '') &&
+    diasValido &&
+    contaId !== null &&
+    !salvando;
+
+  // Grava o regime novo em cartoes_ciclos (upsert por âncora). Chamado direto
+  // (sem migração) ou após confirmar o aviso 3b.
+  async function gravarRegime() {
+    const { error } = await supabase
+      .from('cartoes_ciclos')
+      .upsert(
+        {
+          cartao_id: cartao!.id,
+          desde_ciclo_abs: desdeAbs,
+          dia_fechamento: novoFechamento,
+          dia_pagamento: novoPagamento,
+        },
+        { onConflict: 'cartao_id,desde_ciclo_abs' },
+      );
+    if (error) throw error;
+  }
 
   async function salvar() {
     setErro(null);
     setSalvando(true);
     try {
-      const novoFechamento = Number(venceDia) - Number(diasAntes);
-      const novoPagamento = Number(venceDia);
-
-      // Campos "resto" (não-data) — sempre vão para cartoes. As DATAS-BASE em
-      // cartoes NUNCA são tocadas na edição (Fase 2b): mudança de data vira
-      // regime em cartoes_ciclos, preservando o passado (princípio 3).
       const restoPayload = {
         nome: nome.trim(),
         conta_id: contaId,
@@ -141,8 +204,7 @@ export function CriarEditarCartao({ cartao, contas, ciclos, hoje, onVoltar, onSa
       };
 
       if (!editando) {
-        // Criação: o cartão nasce com o regime-base nos próprios campos de
-        // cartoes (não há passado a preservar). Sem cartoes_ciclos.
+        // Criação: regime-base nos próprios campos de cartoes; sem cartoes_ciclos.
         const { error } = await supabase.from('cartoes').insert({
           ...restoPayload,
           dia_fechamento: novoFechamento,
@@ -154,52 +216,53 @@ export function CriarEditarCartao({ cartao, contas, ciclos, hoje, onVoltar, onSa
         return;
       }
 
-      // Edição: sempre atualiza o "resto" em cartoes (sem as datas-base).
+      // Edição: atualiza o "resto" em cartoes (sem tocar nas datas-base).
       const { error: erroResto } = await supabase
         .from('cartoes')
         .update(restoPayload)
         .eq('id', cartao!.id);
       if (erroResto) throw erroResto;
 
-      // As datas mudaram em relação ao regime VIGENTE de hoje? Se não, acabou —
-      // foi edição de resto, nenhum regime criado (comportamento idêntico ao
-      // de antes para quem só mexe em nome/tema/previsão).
-      const mudouData =
-        novoFechamento !== regimeVigente.dia_fechamento ||
-        novoPagamento !== regimeVigente.dia_pagamento;
+      // Sem mudança de data: acabou (edição de resto, nenhum regime criado).
       if (!mudouData) {
         onSalvou();
         onVoltar();
         return;
       }
 
-      // Mudança de data: grava um regime novo em cartoes_ciclos, com âncora
-      // DERIVADA — o regime novo vale do PRÓXIMO ciclo de fechamento; o ciclo em
-      // curso termina sob a regra velha (§ doc-fase2). Nada do passado se mexe.
-      const desde = ancoraMudancaDeRegime(cartao!, hoje, indiceCiclos);
+      // Mudou a data. Antes de gravar, checa se algum lançamento do cartão migra
+      // de fatura por causa do novo fechamento (adendo 3b). Se sim, mostra aviso
+      // e espera a confirmação; a gravação real acontece no onConfirmar do modal.
+      const mig = migracaoAoMudarFechamento(
+        lancamentos, cartao!, desdeAbs, novoFechamento, novoPagamento, hoje, excecoes,
+      );
+      if (mig.entram > 0 || mig.saem > 0) {
+        setAvisoMigracao(mig);
+        setSalvando(false); // libera; o fluxo continua no modal
+        return;
+      }
 
-      // Se já existe uma mudança AINDA-NÃO-VIGENTE ancorada no mesmo ciclo
-      // (o usuário editou a data duas vezes antes do próximo fechamento),
-      // substitui essa linha em vez de inserir outra (o índice único
-      // (cartao_id, desde_ciclo_abs) exige upsert). onConflict casa a UNIQUE.
-      const { error: erroCiclo } = await supabase
-        .from('cartoes_ciclos')
-        .upsert(
-          {
-            cartao_id: cartao!.id,
-            desde_ciclo_abs: desde,
-            dia_fechamento: novoFechamento,
-            dia_pagamento: novoPagamento,
-          },
-          { onConflict: 'cartao_id,desde_ciclo_abs' },
-        );
-      if (erroCiclo) throw erroCiclo;
-
+      // Nada migra: grava direto.
+      await gravarRegime();
       onSalvou();
       onVoltar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro ao salvar.');
-    } finally {
+      setSalvando(false);
+    }
+  }
+
+  // Confirmação do aviso 3b: grava o regime e fecha.
+  async function confirmarComMigracao() {
+    setAvisoMigracao(null);
+    setSalvando(true);
+    setErro(null);
+    try {
+      await gravarRegime();
+      onSalvou();
+      onVoltar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : 'Erro ao salvar.');
       setSalvando(false);
     }
   }
@@ -263,17 +326,45 @@ export function CriarEditarCartao({ cartao, contas, ciclos, hoje, onVoltar, onSa
           />
         </div>
 
-        {/* Vence dia · Fecha N dias antes (Fase 1: entrada por N; grava dia_fechamento = venceDia − N) */}
+        {/* Vencimento + fechamento. CRIAÇÃO: dia numérico (repete sempre).
+            EDIÇÃO: date picker da próxima data de vencimento (âncora concreta,
+            adendo Mudança 1/2). Fechamento sempre em "N dias antes". */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', gap: 'var(--space-md)' }}>
             <div style={{ flex: 1 }}>
-              <Input
-                label="Vence dia"
-                value={venceDia}
-                onChange={(e) => setVenceDia(clampDia(e.target.value))}
-                inputMode="numeric"
-                placeholder="05"
-              />
+              {editando ? (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span className="type-label" style={{ color: 'var(--text-secondary)' }}>
+                    Próximo vencimento
+                  </span>
+                  <input
+                    type="date"
+                    value={vencData}
+                    min={vencPisoISO}
+                    onChange={(e) => { if (e.target.value) setVencData(e.target.value); }}
+                    className="type-body"
+                    style={{
+                      padding: '12px 14px',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-default)',
+                      background: 'var(--bg-surface)',
+                      color: 'var(--text-primary)',
+                      fontFamily: 'Inter, system-ui, sans-serif',
+                      fontSize: 16,
+                      outline: 'none',
+                      width: '100%',
+                    }}
+                  />
+                </label>
+              ) : (
+                <Input
+                  label="Vence dia"
+                  value={venceDia}
+                  onChange={(e) => setVenceDia(clampDia(e.target.value))}
+                  inputMode="numeric"
+                  placeholder="05"
+                />
+              )}
             </div>
             <div style={{ flex: 1 }}>
               <Input
@@ -285,7 +376,7 @@ export function CriarEditarCartao({ cartao, contas, ciclos, hoje, onVoltar, onSa
               />
             </div>
           </div>
-          {venceDia !== '' && diasAntes !== '' && !fechamentoNoMes && (
+          {!fechamentoNoMes && ((editando && vencData !== '') || (!editando && venceDia !== '')) && diasAntes !== '' && (
             <span className="type-caption" style={{ color: 'var(--value-saida)' }}>
               Nesta versão o fechamento precisa cair no mesmo mês do vencimento.
             </span>
@@ -408,6 +499,31 @@ export function CriarEditarCartao({ cartao, contas, ciclos, hoje, onVoltar, onSa
         onFechar={() => setSheet(null)}
         onSelecionar={(chave) => { setBandeira(chave); setSheet(null); }}
       />
+
+      {/* Aviso 3b — migração de faturas ao mudar o fechamento. Não bloqueia:
+          informa quantos lançamentos entram/saem do ciclo-alvo e confirma.
+          Usa tipo 'confirmacao' (dois botões, não-destrutivo). */}
+      {avisoMigracao && (
+        <ModalDeAlerta
+          tipo="confirmacao"
+          titulo="A mudança remaneja lançamentos"
+          corpo={(() => {
+            const partes: string[] = [];
+            if (avisoMigracao.entram > 0)
+              partes.push(
+                `${avisoMigracao.entram} lançamento${avisoMigracao.entram > 1 ? 's passam' : ' passa'} a cair na fatura de ${desdeMesTexto}`,
+              );
+            if (avisoMigracao.saem > 0)
+              partes.push(
+                `${avisoMigracao.saem} lançamento${avisoMigracao.saem > 1 ? 's saem' : ' sai'} da fatura de ${desdeMesTexto}`,
+              );
+            return `${partes.join(' e ')}. As faturas anteriores não mudam. Confirmar?`;
+          })()}
+          primaria={{ rotulo: 'Confirmar', onClick: () => { void confirmarComMigracao(); } }}
+          secundaria={{ rotulo: 'Cancelar', onClick: () => setAvisoMigracao(null) }}
+          onScrim={() => setAvisoMigracao(null)}
+        />
+      )}
 
       {/* Footer fixo: Salvar — sempre acessível na base, cobre o Apagar. */}
       <div style={{ position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 10, borderTop: '1px solid var(--border-default)', background: 'var(--bg-surface)' }}>
