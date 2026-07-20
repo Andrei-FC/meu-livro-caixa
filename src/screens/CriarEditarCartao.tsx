@@ -90,14 +90,21 @@ export function CriarEditarCartao({ cartao, contas, ciclos, lancamentos, excecoe
   // Regime VIGENTE de hoje (Fase 2b): os campos mostram o que está em força
   // AGORA, não o campo-base cru — se já há mudança agendada, a tela reflete ela.
   const indiceCiclos = indexarCiclos(ciclos);
-  const cicloHojeAbs = cartao ? hoje.getFullYear() * 12 + hoje.getMonth() : 0;
-  const regimeVigente = cartao
-    ? regimeDoCiclo(cartao, cicloHojeAbs, indiceCiclos)
-    : { dia_fechamento: 0, dia_pagamento: 0 };
 
   // PISO da mudança (adendo Mudança 3): primeiro ciclo cujo fechamento ainda não
-  // ocorreu. É o menor ciclo onde a mudança pode ancorar; trava o date picker.
+  // ocorreu — a PRÓXIMA fatura. É o menor ciclo onde a mudança pode ancorar
+  // (trava o date picker) e também o ciclo cujo regime a tela deve refletir.
+  // Depende só de cartao/hoje/ciclos — por isso calculado antes do regime.
   const pisoAbs = cartao ? pisoMudancaDeRegime(cartao, hoje, indiceCiclos) : 0;
+
+  // Regime VIGENTE que a tela mostra: o da PRÓXIMA fatura (piso), não o do
+  // mês-calendário de hoje. Uma mudança ancorada em agosto não vale em julho;
+  // ler o regime no mês de hoje (julho) reabriria a tela com os dados velhos
+  // mesmo após salvar. Ler no piso reflete a mudança já agendada.
+  const regimeVigente = cartao
+    ? regimeDoCiclo(cartao, pisoAbs, indiceCiclos)
+    : { dia_fechamento: 0, dia_pagamento: 0 };
+
   // Data de vencimento do ciclo-piso sob o regime vigente — valor inicial e
   // mínimo do picker (a "próxima fatura" sob a regra atual).
   const vencPisoISO = cartao
