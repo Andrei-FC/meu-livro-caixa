@@ -14,10 +14,16 @@
 //  - Âncora no dia do mês + clamp 29–31 no último dia, voltando ao dia-âncora
 //    nos meses que comportam. Nunca transborda para o mês seguinte (princípio 2).
 
-import type { Lancamento, Transferencia, ExcecaoSerie, Conta, Cartao, Pagamento } from '../types/db';
+import type { Lancamento, Transferencia, ExcecaoSerie, Conta, Cartao, Pagamento, CartaoCiclo } from '../types/db';
 
 /** Horizonte de projeção: meses à frente de hoje para recorrência indefinida. */
 export const HORIZONTE_MESES = 24;
+
+/** Quantos meses para trás varrer ao montar as compras de um ciclo (§5.3). Num
+ *  regime estável, 1 basta; com regime versionado, um ciclo-ponte ("furar o
+ *  mês") pode abranger mais. 2 cobre folgadamente qualquer ponte plausível — a
+ *  atribuição real é feita por cicloDeFechamentoAbs, isto é só o range de busca. */
+const JANELA_CICLO_MESES = 2;
 
 /**
  * Índice de exceções para consulta O(1) no motor: serie_id → (mes_alvo → exceção).
@@ -59,6 +65,53 @@ export function indexarPagamentos(pagamentos: Pagamento[]): IndicePagamentos {
     porCiclo.set(p.ciclo_abs, p);
   }
   return idx;
+}
+
+/**
+ * Índice de regimes de ciclo por cartão (Fase 2): cartao_id → lista de mudanças
+ * ORDENADA por `desde_ciclo_abs` crescente. Versiona dia_fechamento/dia_pagamento
+ * no tempo sem reescrever o passado (§4.3, princípio 3). Um cartão sem mudança
+ * não aparece no mapa; o motor cai no regime-base (campos de `cartoes`).
+ */
+export type IndiceCiclos = Map<string, CartaoCiclo[]>;
+
+export function indexarCiclos(ciclos: CartaoCiclo[]): IndiceCiclos {
+  const idx: IndiceCiclos = new Map();
+  for (const c of ciclos) {
+    let lista = idx.get(c.cartao_id);
+    if (!lista) { lista = []; idx.set(c.cartao_id, lista); }
+    lista.push(c);
+  }
+  for (const lista of idx.values()) lista.sort((a, b) => a.desde_ciclo_abs - b.desde_ciclo_abs);
+  return idx;
+}
+
+/**
+ * Regime (par fechamento/pagamento) VIGENTE de um cartão num ciclo de FECHAMENTO
+ * `cicloAbs`. Fonte única do par temporal — todo o motor deve passar por aqui em
+ * vez de ler `cartao.dia_*` cru.
+ *
+ * Regra: o regime vigente é a mudança de MAIOR `desde_ciclo_abs ≤ cicloAbs`;
+ * não havendo nenhuma, o REGIME-BASE (campos de `cartoes`, que valem desde
+ * sempre). `ciclos` omitido/vazio → sempre o regime-base (retrocompatível com
+ * todos os cartões atuais).
+ */
+export function regimeDoCiclo(
+  cartao: Cartao,
+  cicloAbs: number,
+  ciclos?: IndiceCiclos,
+): { dia_fechamento: number; dia_pagamento: number } {
+  const lista = ciclos?.get(cartao.id);
+  if (lista && lista.length > 0) {
+    // Lista ordenada asc: o último com desde_ciclo_abs ≤ cicloAbs é o vigente.
+    let vigente: CartaoCiclo | null = null;
+    for (const c of lista) {
+      if (c.desde_ciclo_abs <= cicloAbs) vigente = c;
+      else break;
+    }
+    if (vigente) return { dia_fechamento: vigente.dia_fechamento, dia_pagamento: vigente.dia_pagamento };
+  }
+  return { dia_fechamento: cartao.dia_fechamento, dia_pagamento: cartao.dia_pagamento };
 }
 
 /** Parte uma data YYYY-MM-DD em [ano, mes(0-11), dia], sem fuso. */
@@ -419,23 +472,53 @@ export function planejarDivisao(
 // o próprio realizado acumulado (sem barra — o componente já se auto-esconde).
 
 /** Índice de mês absoluto do ciclo que FECHA contendo uma compra na data dada.
- *  Compra antes do dia_fechamento → fecha no mês da compra; a partir dele →
- *  fecha no mês seguinte (§4.8). */
-function cicloDeFechamentoAbs(dataISO: string, diaFechamento: number): number {
+ *
+ *  Regra única (Fase 2, §4.8 + doc-fase2): a compra pertence à PRIMEIRA fatura
+ *  cujo FECHAMENTO ainda não passou na data da compra. Com regime versionado
+ *  (`cartoes_ciclos`), o dia de fechamento de cada ciclo candidato pode diferir,
+ *  então não basta comparar com um dia fixo: avaliamos o fechamento do ciclo do
+ *  mês da compra e, se já passou, o do mês seguinte. A duração do ciclo é
+ *  emergente (30 ou ~47 dias); não há entidade "fatura-ponte".
+ *
+ *  Retrocompatível: sem `ciclos` (ou cartão sem mudança), regimeDoCiclo devolve
+ *  o campo-base em todos os candidatos e o resultado é idêntico ao antigo
+ *  `d < diaFechamento ? base : base + 1`. */
+function cicloDeFechamentoAbs(dataISO: string, cartao: Cartao, ciclos?: IndiceCiclos): number {
   const [a, m, d] = parteData(dataISO);
   const base = indiceMes(a, m);
-  return d < diaFechamento ? base : base + 1;
+  // Fechamento do ciclo do próprio mês da compra (com clamp de dia curto).
+  const fechBase = diaAncoraNoMes(regimeDoCiclo(cartao, base, ciclos).dia_fechamento, a, m);
+  // Compra estritamente antes do fechamento do mês → fecha nesse ciclo; a partir
+  // do dia de fechamento (inclusive) → cai no ciclo seguinte.
+  return d < fechBase ? base : base + 1;
+}
+
+/** Âncora DERIVADA de uma mudança de regime (Fase 2b, doc-fase2 "A âncora da
+ *  mudança é DERIVADA, não digitada"): o `desde_ciclo_abs` a partir do qual o
+ *  regime NOVO passa a valer.
+ *
+ *  Regra: o ciclo em curso (o que ainda vai fechar sob a regra VELHA) termina
+ *  intacto; o regime novo vale do PRÓXIMO ciclo de fechamento. Isto é
+ *  `cicloDeFechamentoAbs(hoje, regime_velho) + 1` — o ciclo de fechamento de hoje
+ *  é o aberto/em-curso; +1 é o primeiro que nasce sob a regra nova. Garante por
+ *  construção que nada do passado (nem o ciclo aberto) se mexe, e que não há dois
+ *  vencimentos encavalados (§ doc-fase2). */
+export function ancoraMudancaDeRegime(cartao: Cartao, hoje: Date, ciclos?: IndiceCiclos): number {
+  const hojeISO = montaISO(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  return cicloDeFechamentoAbs(hojeISO, cartao, ciclos) + 1;
 }
 
 export type FaseCiclo = 'futura' | 'aberta' | 'fechada';
 
 /** Fase do ciclo que fecha em `cicloAbs`, do ponto de vista de `hoje` (§4.4). */
-export function faseDoCiclo(cicloAbs: number, cartao: Cartao, hoje: Date): FaseCiclo {
+export function faseDoCiclo(cicloAbs: number, cartao: Cartao, hoje: Date, ciclos?: IndiceCiclos): FaseCiclo {
   const hojeAbs = indiceMes(hoje.getFullYear(), hoje.getMonth());
   if (cicloAbs < hojeAbs) return 'fechada'; // ciclo de mês já passado: consolidado
   if (cicloAbs > hojeAbs) return 'futura'; // ainda vai fechar num mês futuro
-  // Mês de fechamento é o corrente: antes do dia_fechamento = aberta; senão fechada.
-  return hoje.getDate() >= cartao.dia_fechamento ? 'fechada' : 'aberta';
+  // Mês de fechamento é o corrente: antes do dia_fechamento (do regime vigente
+  // deste ciclo) = aberta; senão fechada.
+  const diaFech = regimeDoCiclo(cartao, cicloAbs, ciclos).dia_fechamento;
+  return hoje.getDate() >= diaFech ? 'fechada' : 'aberta';
 }
 
 /** Soma das compras (realizado) do ciclo que FECHA em `cicloAbs`, para um cartão.
@@ -448,9 +531,10 @@ export function realizadoDoCiclo(
   cicloAbs: number,
   hoje: Date,
   excecoes?: IndiceExcecoes,
+  ciclos?: IndiceCiclos,
 ): number {
   let total = 0;
-  for (const oc of ocorrenciasDoCiclo(lancamentos, cartao, cicloAbs, hoje, excecoes)) {
+  for (const oc of ocorrenciasDoCiclo(lancamentos, cartao, cicloAbs, hoje, excecoes, ciclos)) {
     total += oc.valor;
   }
   return total;
@@ -465,17 +549,23 @@ export function ocorrenciasDoCiclo(
   cicloAbs: number,
   hoje: Date,
   excecoes?: IndiceExcecoes,
+  ciclos?: IndiceCiclos,
 ): OcorrenciaLancamento[] {
-  // O ciclo que fecha em cicloAbs abrange compras dos meses (cicloAbs−1) e
-  // cicloAbs (a janela cruza a virada de mês no dia_fechamento). Expandimos os
-  // dois meses e filtramos pela regra de fechamento.
+  // O ciclo que fecha em cicloAbs abrange compras desde o fechamento anterior.
+  // Num regime estável isso é 1 mês (janela [cicloAbs−1, cicloAbs]); mas com
+  // regime versionado um ciclo-ponte ("furar o mês", ~47d) pode abranger mais de
+  // um mês para trás. Expandimos uma janela generosa (JANELA_CICLO_MESES meses)
+  // e deixamos a REGRA de atribuição (cicloDeFechamentoAbs) decidir — ela é a
+  // fonte da verdade; o range só precisa ser amplo o bastante para não perder
+  // compra. Ocorrências fora do ciclo são filtradas de qualquer forma.
   const doCartao = lancamentos.filter((l) => l.cartao_id === cartao.id);
   const out: OcorrenciaLancamento[] = [];
-  for (const mAbs of [cicloAbs - 1, cicloAbs]) {
+  for (let mAbs = cicloAbs - JANELA_CICLO_MESES; mAbs <= cicloAbs; mAbs++) {
+    if (mAbs < 0) continue;
     const ano = Math.floor(mAbs / 12);
     const mes = mAbs % 12;
     for (const oc of lancamentosNoMes(doCartao, ano, mes, hoje, excecoes)) {
-      if (cicloDeFechamentoAbs(oc.data, cartao.dia_fechamento) === cicloAbs) out.push(oc);
+      if (cicloDeFechamentoAbs(oc.data, cartao, ciclos) === cicloAbs) out.push(oc);
     }
   }
   return out;
@@ -489,11 +579,12 @@ function pesoDoCiclo(
   cicloAbs: number,
   hoje: Date,
   excecoes?: IndiceExcecoes,
+  ciclos?: IndiceCiclos,
 ): number {
   if (cicloAbs < 0) return 0;
-  const realizado = realizadoDoCiclo(lancamentos, cartao, cicloAbs, hoje, excecoes);
+  const realizado = realizadoDoCiclo(lancamentos, cartao, cicloAbs, hoje, excecoes, ciclos);
   const previsao = cartao.previsao_mensal;
-  const fase = faseDoCiclo(cicloAbs, cartao, hoje);
+  const fase = faseDoCiclo(cicloAbs, cartao, hoje, ciclos);
   if (previsao == null || previsao <= 0) return realizado; // sem previsão: só realizado
   if (fase === 'fechada') return realizado; // consolidado: fato é fato
   return Math.max(previsao, realizado); // aberta/futura: placeholder segura, real estoura
@@ -501,9 +592,10 @@ function pesoDoCiclo(
 
 /** Mês (abs) em que a fatura de um ciclo VENCE por PADRÃO, pela regra de
  *  pagamento (§4.8): vencimento depois do fechamento → mesmo mês do ciclo;
- *  senão → mês seguinte. */
-function mesVencimentoPadraoAbs(cartao: Cartao, cicloAbs: number): number {
-  return cartao.dia_pagamento > cartao.dia_fechamento ? cicloAbs : cicloAbs + 1;
+ *  senão → mês seguinte. Usa o regime vigente do ciclo (Fase 2). */
+function mesVencimentoPadraoAbs(cartao: Cartao, cicloAbs: number, ciclos?: IndiceCiclos): number {
+  const r = regimeDoCiclo(cartao, cicloAbs, ciclos);
+  return r.dia_pagamento > r.dia_fechamento ? cicloAbs : cicloAbs + 1;
 }
 
 /**
@@ -516,14 +608,39 @@ export function posicaoFatura(
   cartao: Cartao,
   cicloAbs: number,
   pagamentos?: IndicePagamentos,
+  ciclos?: IndiceCiclos,
 ): { mesAbs: number; dia: number } {
   const pago = pagamentos?.get(cartao.id)?.get(cicloAbs);
   if (pago) {
     const [a, m, d] = parteData(pago.data_paga);
     return { mesAbs: indiceMes(a, m), dia: d };
   }
-  const mesAbs = mesVencimentoPadraoAbs(cartao, cicloAbs);
-  return { mesAbs, dia: diaAncoraNoMes(cartao.dia_pagamento, Math.floor(mesAbs / 12), mesAbs % 12) };
+  const mesAbs = mesVencimentoPadraoAbs(cartao, cicloAbs, ciclos);
+  const diaPag = regimeDoCiclo(cartao, cicloAbs, ciclos).dia_pagamento;
+  return { mesAbs, dia: diaAncoraNoMes(diaPag, Math.floor(mesAbs / 12), mesAbs % 12) };
+}
+
+/** Ciclos candidatos a VENCER no mês `alvoAbs`, para um cartão. Fonte única do
+ *  range de varredura usado por todo consumidor de fatura-por-mês (faturaNoMes,
+ *  faturaSaidaPorConta, liquidoDoMesPorConta, fluxoDoMes, e a montagem da linha
+ *  na Home). Substitui o cálculo duplicado de `cicloPadrao` + vizinhos ±1.
+ *
+ *  Centro = o ciclo cujo vencimento-PADRÃO cai no alvo, pela regra de pagamento
+ *  do regime vigente (Fase 2). Como um pagamento efetivo pode mover a fatura de
+ *  até um mês e um ciclo-ponte pode deslocar o padrão, varremos ±JANELA_CICLO
+ *  ao redor. Quem decide de fato é sempre posicaoFatura === alvo no chamador —
+ *  este range só precisa CONTER o ciclo certo, sem falso-positivo (o chamador
+ *  filtra). */
+function ciclosCandidatos(cartao: Cartao, alvoAbs: number, ciclos?: IndiceCiclos): number[] {
+  // Centro pela regra do regime do próprio alvo (aproximação — o filtro no
+  // chamador corrige qualquer erro de ±1 introduzido por virada de regime).
+  const rAlvo = regimeDoCiclo(cartao, alvoAbs, ciclos);
+  const centro = rAlvo.dia_pagamento > rAlvo.dia_fechamento ? alvoAbs : alvoAbs - 1;
+  const out: number[] = [];
+  for (let c = centro - JANELA_CICLO_MESES; c <= centro + JANELA_CICLO_MESES; c++) {
+    if (c >= 0) out.push(c);
+  }
+  return out;
 }
 
 /** Peso da fatura de um cartão no saldo do mês (alvoAno, alvoMes), aplicando
@@ -533,9 +650,7 @@ export function posicaoFatura(
  *
  *  Um pagamento efetivo pode MOVER a fatura entre meses (adiantar/atrasar,
  *  dentro do ciclo — §5.3), então somamos aqui TODOS os ciclos cuja posição
- *  (efetiva ou padrão) cai no mês alvo, não só o ciclo do padrão. O pagamento
- *  fica em [fechamento, próximo fechamento), logo o deslocamento é de no máximo
- *  um mês; varremos os ciclos vizinhos do padrão para cobrir os dois sentidos. */
+ *  (efetiva ou padrão) cai no mês alvo, não só o ciclo do padrão. */
 export function faturaNoMes(
   lancamentos: Lancamento[],
   cartao: Cartao,
@@ -544,17 +659,13 @@ export function faturaNoMes(
   hoje: Date,
   excecoes?: IndiceExcecoes,
   pagamentos?: IndicePagamentos,
+  ciclos?: IndiceCiclos,
 ): number {
   const alvoAbs = indiceMes(alvoAno, alvoMes);
-  // Ciclo cujo vencimento-padrão cai no mês alvo (inverso de mesVencimentoPadrao).
-  const cicloPadrao = cartao.dia_pagamento > cartao.dia_fechamento ? alvoAbs : alvoAbs - 1;
-  // Candidatos: o do padrão e os vizinhos (uma fatura pode ter sido movida para
-  // cá vinda de ±1 mês, ou a do padrão ter sido movida para fora daqui).
   let total = 0;
-  for (const cicloAbs of [cicloPadrao - 1, cicloPadrao, cicloPadrao + 1]) {
-    if (cicloAbs < 0) continue;
-    if (posicaoFatura(cartao, cicloAbs, pagamentos).mesAbs !== alvoAbs) continue;
-    total += pesoDoCiclo(lancamentos, cartao, cicloAbs, hoje, excecoes);
+  for (const cicloAbs of ciclosCandidatos(cartao, alvoAbs, ciclos)) {
+    if (posicaoFatura(cartao, cicloAbs, pagamentos, ciclos).mesAbs !== alvoAbs) continue;
+    total += pesoDoCiclo(lancamentos, cartao, cicloAbs, hoje, excecoes, ciclos);
   }
   return total;
 }
@@ -572,6 +683,23 @@ export function faturaNoMes(
  *  ou padrão) for ≤ corte — a mesma régua do saldo no mês corrente (foto de
  *  hoje). Sem corte, conta a fatura inteira do mês (previsão inclusa) — coerente
  *  com o mês futuro projetado. Espelha exatamente liquidoDoMesPorConta. */
+/** Dia do mês (alvoAbs) em que a fatura de um cartão pesa, ou null se nenhuma.
+ *  Percorre os ciclos candidatos e devolve o dia do primeiro cuja posição cai no
+ *  alvo (efetiva/padrão). Fonte única do "que dia a fatura pesa neste mês",
+ *  usada pelo corte de foto-de-hoje e pelo posicionamento no fluxo diário. */
+export function diaFaturaNoMes(
+  cartao: Cartao,
+  alvoAbs: number,
+  pagamentos?: IndicePagamentos,
+  ciclos?: IndiceCiclos,
+): { cicloAbs: number; dia: number } | null {
+  for (const c of ciclosCandidatos(cartao, alvoAbs, ciclos)) {
+    const pos = posicaoFatura(cartao, c, pagamentos, ciclos);
+    if (pos.mesAbs === alvoAbs) return { cicloAbs: c, dia: pos.dia };
+  }
+  return null;
+}
+
 export function faturaSaidaPorConta(
   lancamentos: Lancamento[],
   cartoes: Cartao[],
@@ -581,22 +709,16 @@ export function faturaSaidaPorConta(
   excecoes?: IndiceExcecoes,
   pagamentos?: IndicePagamentos,
   corte?: string,
+  ciclos?: IndiceCiclos,
 ): Map<string, number> {
   const m = new Map<string, number>();
   const alvoAbs = indiceMes(alvoAno, alvoMes);
   for (const k of cartoes) {
-    const peso = faturaNoMes(lancamentos, k, alvoAno, alvoMes, hoje, excecoes, pagamentos);
+    const peso = faturaNoMes(lancamentos, k, alvoAno, alvoMes, hoje, excecoes, pagamentos, ciclos);
     if (peso === 0) continue;
     if (corte != null) {
-      // Descobre o dia em que a fatura pesa neste mês (ciclo padrão e vizinhos).
-      const cicloPadrao = k.dia_pagamento > k.dia_fechamento ? alvoAbs : alvoAbs - 1;
-      let diaPeso: number | null = null;
-      for (const c of [cicloPadrao - 1, cicloPadrao, cicloPadrao + 1]) {
-        if (c < 0) continue;
-        const pos = posicaoFatura(k, c, pagamentos);
-        if (pos.mesAbs === alvoAbs) { diaPeso = pos.dia; break; }
-      }
-      if (diaPeso != null && montaISO(alvoAno, alvoMes, diaPeso) > corte) continue;
+      const pos = diaFaturaNoMes(k, alvoAbs, pagamentos, ciclos);
+      if (pos != null && montaISO(alvoAno, alvoMes, pos.dia) > corte) continue;
     }
     m.set(k.conta_id, (m.get(k.conta_id) ?? 0) + peso);
   }
@@ -607,27 +729,30 @@ export function faturaSaidaPorConta(
  *  efetivo, é o `dia_pagamento` com clamp (§4.1); usado pela lista para
  *  posicionar a linha. Mantido por compatibilidade — a lista agora usa
  *  posicaoFatura para honrar a data efetiva. */
-export function diaPagamentoNoMes(cartao: Cartao, ano: number, mes: number): number {
-  return diaAncoraNoMes(cartao.dia_pagamento, ano, mes);
+export function diaPagamentoNoMes(cartao: Cartao, ano: number, mes: number, ciclos?: IndiceCiclos): number {
+  const diaPag = regimeDoCiclo(cartao, indiceMes(ano, mes), ciclos).dia_pagamento;
+  return diaAncoraNoMes(diaPag, ano, mes);
 }
 
 /** Limites do intervalo válido de data de pagamento de um ciclo (§5.3):
  *  [dia_fechamento do ciclo, dia_fechamento do próximo) — adiantar (a partir do
  *  fechamento) ou atrasar é livre; cruzar o próximo fechamento não (não
  *  encavala dois pagamentos). Devolve as datas ISO min (inclusiva) e max
- *  (exclusiva) para travar o seletor de data. */
+ *  (exclusiva) para travar o seletor de data. Cada extremo usa o dia de
+ *  fechamento do REGIME vigente do respectivo ciclo (Fase 2). */
 export function intervaloPagamento(
   cartao: Cartao,
   cicloAbs: number,
+  ciclos?: IndiceCiclos,
 ): { min: string; maxExclusivo: string } {
   const anoC = Math.floor(cicloAbs / 12);
   const mesC = cicloAbs % 12;
-  const diaFech = diaAncoraNoMes(cartao.dia_fechamento, anoC, mesC);
+  const diaFech = diaAncoraNoMes(regimeDoCiclo(cartao, cicloAbs, ciclos).dia_fechamento, anoC, mesC);
   const min = montaISO(anoC, mesC, diaFech);
   const prox = cicloAbs + 1;
   const anoP = Math.floor(prox / 12);
   const mesP = prox % 12;
-  const diaFechProx = diaAncoraNoMes(cartao.dia_fechamento, anoP, mesP);
+  const diaFechProx = diaAncoraNoMes(regimeDoCiclo(cartao, prox, ciclos).dia_fechamento, anoP, mesP);
   const maxExclusivo = montaISO(anoP, mesP, diaFechProx);
   return { min, maxExclusivo };
 }
@@ -671,14 +796,16 @@ export function faseCarteiraDoCiclo(
   cicloAbs: number,
   hoje: Date,
   pagamentos?: IndicePagamentos,
+  ciclos?: IndiceCiclos,
 ): { fase: 'aberta' | 'fechada'; diaEvento: number; mesEvento: number } {
   const cicloAberto = cicloDeFechamentoAbs(
     montaISO(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()),
-    cartao.dia_fechamento,
+    cartao,
+    ciclos,
   );
   const anoF = Math.floor(cicloAbs / 12);
   const mesF = ((cicloAbs % 12) + 12) % 12;
-  const diaFecha = diaAncoraNoMes(cartao.dia_fechamento, anoF, mesF);
+  const diaFecha = diaAncoraNoMes(regimeDoCiclo(cartao, cicloAbs, ciclos).dia_fechamento, anoF, mesF);
 
   // ABERTA só se o ciclo AINDA NÃO FECHOU: é o corrente (antes do fechamento) ou
   // um ciclo futuro. Mostra o dia de FECHAMENTO ("fecha DD mmm").
@@ -690,7 +817,7 @@ export function faseCarteiraDoCiclo(
   // esteja pendente de pagamento ou já pago (inclusive ciclos antigos, pré-app,
   // sem dados). A tela mostra o VENCIMENTO ("vence DD mmm"): dia efetivo se há
   // pagamento registrado, senão o padrão.
-  const pos = posicaoFatura(cartao, cicloAbs, pagamentos);
+  const pos = posicaoFatura(cartao, cicloAbs, pagamentos, ciclos);
   return { fase: 'fechada', diaEvento: pos.dia, mesEvento: pos.mesAbs % 12 };
 }
 
@@ -700,10 +827,12 @@ export function statusCarteiraDoCartao(
   hoje: Date,
   excecoes?: IndiceExcecoes,
   pagamentos?: IndicePagamentos,
+  ciclos?: IndiceCiclos,
 ): StatusCarteira {
   const cicloAberto = cicloDeFechamentoAbs(
     montaISO(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()),
-    cartao.dia_fechamento,
+    cartao,
+    ciclos,
   );
   const cicloAnterior = cicloAberto - 1;
   const hojeAbs = indiceMes(hoje.getFullYear(), hoje.getMonth());
@@ -714,14 +843,14 @@ export function statusCarteiraDoCartao(
   // e a Carteira passa a mostrar o ciclo ABERTO acumulando (§5.6). Esta régua é
   // "ainda devo mostrar isto?", distinta de faseCarteiraDoCiclo ("que fase é?").
   if (cicloAnterior >= 0) {
-    const pos = posicaoFatura(cartao, cicloAnterior, pagamentos);
+    const pos = posicaoFatura(cartao, cicloAnterior, pagamentos, ciclos);
     const vencAbs = pos.mesAbs;
     const pendente = hojeAbs < vencAbs || (hojeAbs === vencAbs && hoje.getDate() < pos.dia);
     if (pendente) {
       return {
         cicloAbs: cicloAnterior,
         fase: 'fechada',
-        realizado: realizadoDoCiclo(lancamentos, cartao, cicloAnterior, hoje, excecoes),
+        realizado: realizadoDoCiclo(lancamentos, cartao, cicloAnterior, hoje, excecoes, ciclos),
         previsao: cartao.previsao_mensal,
         diaEvento: pos.dia,
         mesEvento: vencAbs % 12,
@@ -730,11 +859,11 @@ export function statusCarteiraDoCartao(
   }
 
   // Sem fechada pendente: o ciclo corrente, aberto, acumulando.
-  const f = faseCarteiraDoCiclo(cartao, cicloAberto, hoje, pagamentos);
+  const f = faseCarteiraDoCiclo(cartao, cicloAberto, hoje, pagamentos, ciclos);
   return {
     cicloAbs: cicloAberto,
     fase: f.fase,
-    realizado: realizadoDoCiclo(lancamentos, cartao, cicloAberto, hoje, excecoes),
+    realizado: realizadoDoCiclo(lancamentos, cartao, cicloAberto, hoje, excecoes, ciclos),
     previsao: cartao.previsao_mensal,
     diaEvento: f.diaEvento,
     mesEvento: f.mesEvento,
@@ -789,6 +918,7 @@ export function liquidoDoMes(
   hoje: Date,
   excecoes?: IndiceExcecoes,
   pagamentos?: IndicePagamentos,
+  ciclos?: IndiceCiclos,
 ): number {
   const tipoConta = new Map(contas.map((c) => [c.id, c.tipo]));
   let total = 0;
@@ -804,7 +934,7 @@ export function liquidoDoMes(
   // Faturas de cartão que VENCEM neste mês (§4.4): max(previsão, realizado)
   // enquanto abertas/futuras; realizado depois de fechar. Fonte única.
   for (const k of cartoes) {
-    total -= faturaNoMes(lancamentos, k, alvoAno, alvoMes, hoje, excecoes, pagamentos);
+    total -= faturaNoMes(lancamentos, k, alvoAno, alvoMes, hoje, excecoes, pagamentos, ciclos);
   }
 
   // Transferências: só as que envolvem poupança alteram o disponível (§4.5).
@@ -845,6 +975,7 @@ export function entradasSaidasDoMes(
   hoje: Date,
   excecoes?: IndiceExcecoes,
   pagamentos?: IndicePagamentos,
+  ciclos?: IndiceCiclos,
 ): { entradas: number; saidas: number } {
   const tipoConta = new Map(contas.map((c) => [c.id, c.tipo]));
   let entradas = 0;
@@ -858,7 +989,7 @@ export function entradasSaidasDoMes(
 
   // Faturas de cartão que vencem no mês → saída (data de pagamento, §4.8).
   for (const k of cartoes) {
-    saidas += faturaNoMes(lancamentos, k, alvoAno, alvoMes, hoje, excecoes, pagamentos);
+    saidas += faturaNoMes(lancamentos, k, alvoAno, alvoMes, hoje, excecoes, pagamentos, ciclos);
   }
 
   // Transferências com poupança: depósito é saída, retirada é entrada (§4.5).
@@ -887,6 +1018,7 @@ export function saldoHerdado(
   hoje: Date,
   excecoes?: IndiceExcecoes,
   pagamentos?: IndicePagamentos,
+  ciclos?: IndiceCiclos,
 ): number {
   const ancora = acharAncora(lancamentos, transferencias);
   if (!ancora) return 0;
@@ -896,7 +1028,7 @@ export function saldoHerdado(
 
   let acc = 0;
   for (let abs = inicio; abs < fim; abs++) {
-    acc += liquidoDoMes(lancamentos, transferencias, contas, cartoes, Math.floor(abs / 12), abs % 12, hoje, excecoes, pagamentos);
+    acc += liquidoDoMes(lancamentos, transferencias, contas, cartoes, Math.floor(abs / 12), abs % 12, hoje, excecoes, pagamentos, ciclos);
   }
   return acc;
 }
@@ -937,6 +1069,7 @@ function liquidoDoMesPorConta(
   acc: Map<string, number>,
   pagamentos?: IndicePagamentos,
   corte?: string,
+  ciclos?: IndiceCiclos,
 ): void {
   const tipoConta = new Map(contas.map((c) => [c.id, c.tipo]));
   const add = (id: string, v: number) => {
@@ -955,18 +1088,11 @@ function liquidoDoMesPorConta(
   // Faturas de cartão que vencem no mês → debitam a conta pagadora (§4.4/§4.5).
   // Com corte, só se a data em que a fatura PESA (efetiva/padrão) já passou.
   for (const k of cartoes) {
-    const peso = faturaNoMes(lancamentos, k, alvoAno, alvoMes, hoje, excecoes, pagamentos);
+    const peso = faturaNoMes(lancamentos, k, alvoAno, alvoMes, hoje, excecoes, pagamentos, ciclos);
     if (peso === 0) continue;
     if (corte != null) {
-      // Descobre o dia em que a fatura pesa neste mês (ciclo do padrão e vizinhos).
-      const cicloPadrao = k.dia_pagamento > k.dia_fechamento ? alvoAbs : alvoAbs - 1;
-      let diaPeso: number | null = null;
-      for (const c of [cicloPadrao - 1, cicloPadrao, cicloPadrao + 1]) {
-        if (c < 0) continue;
-        const pos = posicaoFatura(k, c, pagamentos);
-        if (pos.mesAbs === alvoAbs) { diaPeso = pos.dia; break; }
-      }
-      if (diaPeso != null && montaISO(alvoAno, alvoMes, diaPeso) > corte) continue;
+      const pos = diaFaturaNoMes(k, alvoAbs, pagamentos, ciclos);
+      if (pos != null && montaISO(alvoAno, alvoMes, pos.dia) > corte) continue;
     }
     add(k.conta_id, -peso);
   }
@@ -1008,6 +1134,7 @@ export function saldoAcumuladoPorConta(
   excecoes?: IndiceExcecoes,
   pagamentos?: IndicePagamentos,
   corte?: string,
+  ciclos?: IndiceCiclos,
 ): Map<string, number> {
   const acc = new Map<string, number>();
   for (const c of contas) if (c.tipo === 'corrente') acc.set(c.id, 0); // toda corrente presente, mesmo zerada
@@ -1023,6 +1150,7 @@ export function saldoAcumuladoPorConta(
       Math.floor(abs / 12), abs % 12, hoje, excecoes, acc, pagamentos,
       // corte só no mês alvo — meses anteriores são fato pleno.
       abs === fim ? corte : undefined,
+      ciclos,
     );
   }
   return acc;
@@ -1060,6 +1188,7 @@ export function fluxoDoMes(
   hoje: Date,
   excecoes?: IndiceExcecoes,
   pagamentos?: IndicePagamentos,
+  ciclos?: IndiceCiclos,
 ): PontoFluxo[] {
   const tipoConta = new Map(contas.map((c) => [c.id, c.tipo]));
   const diasNoMes = new Date(alvoAno, alvoMes + 1, 0).getDate();
@@ -1077,15 +1206,10 @@ export function fluxoDoMes(
 
   // Faturas que vencem no mês, no dia em que PESAM (efetivo/padrão — §4.4/§4.8).
   for (const k of cartoes) {
-    const peso = faturaNoMes(lancamentos, k, alvoAno, alvoMes, hoje, excecoes, pagamentos);
+    const peso = faturaNoMes(lancamentos, k, alvoAno, alvoMes, hoje, excecoes, pagamentos, ciclos);
     if (peso <= 0) continue;
-    const cicloPadrao = k.dia_pagamento > k.dia_fechamento ? alvoAbs : alvoAbs - 1;
-    let dia = diaPagamentoNoMes(k, alvoAno, alvoMes);
-    for (const c of [cicloPadrao - 1, cicloPadrao, cicloPadrao + 1]) {
-      if (c < 0) continue;
-      const pos = posicaoFatura(k, c, pagamentos);
-      if (pos.mesAbs === alvoAbs) { dia = pos.dia; break; }
-    }
+    const pos = diaFaturaNoMes(k, alvoAbs, pagamentos, ciclos);
+    const dia = pos != null ? pos.dia : diaPagamentoNoMes(k, alvoAno, alvoMes, ciclos);
     delta[Math.min(Math.max(dia, 1), diasNoMes)] -= peso;
   }
 

@@ -79,3 +79,20 @@ export interface Pagamento {
   data_paga: string; // YYYY-MM-DD — data efetiva do pagamento (§4.4, override do dia_pagamento)
   criado_em: string;
 }
+
+// Vigência de regime de ciclo (Fase 2) — versiona dia_fechamento/dia_pagamento
+// no tempo SEM reescrever o passado. `cartoes.dia_*` continua sendo o
+// REGIME-BASE (vale desde sempre); cada linha aqui é uma MUDANÇA que passa a
+// governar a partir de `desde_ciclo_abs` (inclusive). O regime vigente de um
+// ciclo é o de maior `desde_ciclo_abs ≤ cicloAbs`, senão o campo-base. Um
+// cartão sem mudança não tem linha aqui e cai no campo-base (retrocompatível).
+// Ortogonal a `cartoes_pagamentos` (override PONTUAL de UM ciclo, retroativo);
+// isto é prospectivo e permanente.
+export interface CartaoCiclo {
+  id: string;
+  cartao_id: string; // FK → cartoes
+  desde_ciclo_abs: number; // 1º ciclo de FECHAMENTO (ano*12+mês 0-11) que este regime governa
+  dia_fechamento: number;
+  dia_pagamento: number;
+  criado_em: string;
+}

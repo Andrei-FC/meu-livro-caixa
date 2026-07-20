@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { formatarBR } from '../lib/formato';
-import type { Conta, Cartao, Lancamento, ExcecaoSerie, Transferencia, Pagamento } from '../types/db';
+import type { Conta, Cartao, Lancamento, ExcecaoSerie, Transferencia, Pagamento, CartaoCiclo } from '../types/db';
 import {
   lancamentosNoMes,
   indexarExcecoes,
   indexarPagamentos,
+  indexarCiclos,
   saldoHerdado,
   liquidoDoMes,
   entradasSaidasDoMes,
@@ -14,8 +15,8 @@ import {
   realizadoDoCiclo,
   faseDoCiclo,
   statusCarteiraDoCartao,
-  diaPagamentoNoMes,
-  posicaoFatura,
+  diaFaturaNoMes,
+  regimeDoCiclo,
   saldoAcumuladoPorConta,
   fluxoDoMes,
   saldoPorPoupanca,
@@ -26,6 +27,7 @@ import {
   type OcorrenciaTransferencia,
   type IndiceExcecoes,
   type IndicePagamentos,
+  type IndiceCiclos,
 } from '../lib/recorrencia';
 import {
   BottomNav,
@@ -90,6 +92,7 @@ export function Home() {
   const [excecoes, setExcecoes] = useState<ExcecaoSerie[]>([]);
   const [transferencias, setTransferencias] = useState<Transferencia[]>([]);
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
+  const [ciclos, setCiclos] = useState<CartaoCiclo[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [sheetAberto, setSheetAberto] = useState(false);
@@ -130,8 +133,9 @@ export function Home() {
       supabase.from('excecoes_serie').select('*'),
       supabase.from('transferencias').select('*'),
       supabase.from('cartoes_pagamentos').select('*'),
-    ]).then(([rc, rk, rl, re, rt, rp]) => {
-      const e = rc.error || rk.error || rl.error || re.error || rt.error || rp.error;
+      supabase.from('cartoes_ciclos').select('*'),
+    ]).then(([rc, rk, rl, re, rt, rp, rcc]) => {
+      const e = rc.error || rk.error || rl.error || re.error || rt.error || rp.error || rcc.error;
       if (e) { setErro(e.message); setCarregando(false); return; }
       setContas(rc.data ?? []);
       setCartoes(rk.data ?? []);
@@ -139,6 +143,7 @@ export function Home() {
       setExcecoes(re.data ?? []);
       setTransferencias(rt.data ?? []);
       setPagamentos(rp.data ?? []);
+      setCiclos(rcc.data ?? []);
       setErro(null);
       setCarregando(false);
     }).catch((err) => {
@@ -201,6 +206,7 @@ export function Home() {
   // horizonte) saem daqui, não de um filtro por data crua.
   const indiceExcecoes = useMemo(() => indexarExcecoes(excecoes), [excecoes]);
   const indicePagamentos = useMemo(() => indexarPagamentos(pagamentos), [pagamentos]);
+  const indiceCiclos = useMemo(() => indexarCiclos(ciclos), [ciclos]);
 
   const ocorrenciasDoMes = useMemo(
     () => lancamentosNoMes(lancamentos, ano, mes, hoje, indiceExcecoes),
@@ -227,10 +233,10 @@ export function Home() {
   const faturaDoMes = useMemo(() => {
     const m = new Map<string, number>();
     for (const k of cartoes) {
-      m.set(k.id, faturaNoMes(lancamentos, k, ano, mes, hoje, indiceExcecoes, indicePagamentos));
+      m.set(k.id, faturaNoMes(lancamentos, k, ano, mes, hoje, indiceExcecoes, indicePagamentos, indiceCiclos));
     }
     return m;
-  }, [cartoes, lancamentos, ano, mes, hoje, indiceExcecoes, indicePagamentos]);
+  }, [cartoes, lancamentos, ano, mes, hoje, indiceExcecoes, indicePagamentos, indiceCiclos]);
 
   // Aba CARTEIRA (§5.6) — a "foto do presente" do ciclo, NÃO o mês exibido. Para
   // cada cartão, o motor decide qual fatura está viva agora: a fechada a pagar
@@ -240,10 +246,10 @@ export function Home() {
   const statusCarteira = useMemo(() => {
     const m = new Map<string, ReturnType<typeof statusCarteiraDoCartao>>();
     for (const k of cartoes) {
-      m.set(k.id, statusCarteiraDoCartao(lancamentos, k, hoje, indiceExcecoes, indicePagamentos));
+      m.set(k.id, statusCarteiraDoCartao(lancamentos, k, hoje, indiceExcecoes, indicePagamentos, indiceCiclos));
     }
     return m;
-  }, [cartoes, lancamentos, hoje, indiceExcecoes, indicePagamentos]);
+  }, [cartoes, lancamentos, hoje, indiceExcecoes, indicePagamentos, indiceCiclos]);
 
   // Ordem dos cartões na Carteira: por dia de vencimento (dia_pagamento) crescente
   // — o mais próximo do início do mês no topo. Estável (desempata por nome).
@@ -281,8 +287,8 @@ export function Home() {
   // de propósito (§4.8). Antes, Saídas era só lançamento de débito e a conta do
   // card não fechava (faltava a fatura).
   const { entradas, saidas } = useMemo(
-    () => entradasSaidasDoMes(lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes),
-    [lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes],
+    () => entradasSaidasDoMes(lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes, undefined, indiceCiclos),
+    [lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes, indiceCiclos],
   );
 
   // Discriminador de mês (Item 2) e corte da foto de hoje. Usados pelos cards da
@@ -338,11 +344,11 @@ export function Home() {
     // Fatura de cartão = saída da conta pagadora (§4.8) — fecha com o saldo, que
     // já debita a fatura. Mesmo corte do saldo: no mês corrente só se já pagou.
     const faturaSaida = faturaSaidaPorConta(
-      lancamentos, cartoes, ano, mes, hoje, indiceExcecoes, indicePagamentos, corteSaldoConta,
+      lancamentos, cartoes, ano, mes, hoje, indiceExcecoes, indicePagamentos, corteSaldoConta, indiceCiclos,
     );
     for (const [contaId, v] of faturaSaida) bump(contaId, 'saidas', v);
     return m;
-  }, [ocorrenciasLista, transferenciasLista, contas, lancamentos, cartoes, ano, mes, hoje, indiceExcecoes, indicePagamentos, corteSaldoConta]);
+  }, [ocorrenciasLista, transferenciasLista, contas, lancamentos, cartoes, ano, mes, hoje, indiceExcecoes, indicePagamentos, corteSaldoConta, indiceCiclos]);
 
   // Entradas/saídas por conta no MÊS ATUAL real (não o exibido) — tela de
   // Gerenciar Contas, que não tem seletor de mês: mostra sempre o corrente.
@@ -368,20 +374,20 @@ export function Home() {
     // Fatura de cartão como saída da conta pagadora (§4.8). Mês corrente sempre:
     // corte = hoje (só conta a fatura já paga), igual ao saldo desta tela.
     const faturaSaida = faturaSaidaPorConta(
-      lancamentos, cartoes, hoje.getFullYear(), hoje.getMonth(), hoje, indiceExcecoes, indicePagamentos, corteHoje,
+      lancamentos, cartoes, hoje.getFullYear(), hoje.getMonth(), hoje, indiceExcecoes, indicePagamentos, corteHoje, indiceCiclos,
     );
     for (const [contaId, v] of faturaSaida) bump(contaId, 'saidas', v);
     return m;
-  }, [lancamentos, transferencias, contas, cartoes, hoje, indiceExcecoes, indicePagamentos, corteHoje]);
+  }, [lancamentos, transferencias, contas, cartoes, hoje, indiceExcecoes, indicePagamentos, corteHoje, indiceCiclos]);
   // Saldo acumulado por conta (§4.7) até o mês ATUAL — cards da tela Gerenciar
   // Contas. Invariante: soma das correntes == saldo do topo. A fatura de cada
   // cartão debita a conta pagadora (cartao.conta_id).
   const saldosPorConta = useMemo(
     () => saldoAcumuladoPorConta(
       lancamentos, transferencias, contas, cartoes,
-      hoje.getFullYear(), hoje.getMonth(), hoje, indiceExcecoes, indicePagamentos,
+      hoje.getFullYear(), hoje.getMonth(), hoje, indiceExcecoes, indicePagamentos, undefined, indiceCiclos,
     ),
-    [lancamentos, transferencias, contas, cartoes, hoje, indiceExcecoes, indicePagamentos],
+    [lancamentos, transferencias, contas, cartoes, hoje, indiceExcecoes, indicePagamentos, indiceCiclos],
   );
   // Saldo guardado por poupança HOJE (§5.4) — foto do presente, para a tela de
   // gestão do Cofre (TOTAL GUARDADO) e o hero do drill-down, que NÃO navegam mês.
@@ -423,9 +429,9 @@ export function Home() {
   const saldosPorContaMesExibido = useMemo(
     () => saldoAcumuladoPorConta(
       lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes, indicePagamentos,
-      corteSaldoConta,
+      corteSaldoConta, indiceCiclos,
     ),
-    [lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes, indicePagamentos, corteSaldoConta],
+    [lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes, indicePagamentos, corteSaldoConta, indiceCiclos],
   );
   // Saldo guardado por poupança no MÊS EXIBIDO (§5.6, aba Contas → Cofre, Item 2)
   // — mesma régua de três casos da corrente: mês corrente corta em hoje (vivo),
@@ -440,22 +446,22 @@ export function Home() {
   // (§4.7). Calculado na leitura e memoizado — barato porque expande regras,
   // não linhas. Projeção futura limitada ao horizonte do motor.
   const herdado = useMemo(
-    () => saldoHerdado(lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes),
-    [lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes],
+    () => saldoHerdado(lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes, undefined, indiceCiclos),
+    [lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes, indiceCiclos],
   );
   // Líquido do mês exibido pela MESMA regra do acúmulo (inclui cartão e
   // poupança), para o saldo do mês bater com o que ele herda ao mês seguinte.
   const liquidoMes = useMemo(
-    () => liquidoDoMes(lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes),
-    [lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes],
+    () => liquidoDoMes(lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes, undefined, indiceCiclos),
+    [lancamentos, transferencias, contas, cartoes, ano, mes, hoje, indiceExcecoes, indiceCiclos],
   );
   const saldoMes = herdado + liquidoMes;
 
   // Fluxo do mês (§5.5): saldo em conta dia a dia, partindo do herdado. Último
   // ponto == saldoMes (mesma mecânica do liquidoDoMes). Alimenta o gráfico.
   const fluxo = useMemo(
-    () => fluxoDoMes(lancamentos, transferencias, contas, cartoes, ano, mes, herdado, hoje, indiceExcecoes),
-    [lancamentos, transferencias, contas, cartoes, ano, mes, herdado, hoje, indiceExcecoes],
+    () => fluxoDoMes(lancamentos, transferencias, contas, cartoes, ano, mes, herdado, hoje, indiceExcecoes, undefined, indiceCiclos),
+    [lancamentos, transferencias, contas, cartoes, ano, mes, herdado, hoje, indiceExcecoes, indiceCiclos],
   );
 
   function mudarMes(delta: number) {
@@ -531,6 +537,8 @@ export function Home() {
       <CriarEditarCartao
         cartao={pagina.cartao}
         contas={contas}
+        ciclos={pagina.cartao ? ciclos.filter((c) => c.cartao_id === pagina.cartao!.id) : []}
+        hoje={hoje}
         onVoltar={() => setPagina({ tela: 'gerenciar-cartoes' })}
         onSalvou={() => { carregar(); }}
       />
@@ -543,6 +551,7 @@ export function Home() {
         lancamentos={lancamentos}
         excecoes={indiceExcecoes}
         pagamentos={indicePagamentos}
+        ciclos={indiceCiclos}
         hoje={hoje}
         cicloInicial={pagina.cicloInicial}
         onVoltar={() => setPagina(null)}
@@ -685,15 +694,19 @@ export function Home() {
                 lancamentosRaw={lancamentos}
                 excecoes={indiceExcecoes}
                 pagamentos={indicePagamentos}
+                ciclos={indiceCiclos}
                 hoje={hoje}
                 onEditar={setEmEdicao}
                 onApagarTransf={setTransfApagar}
                 onAbrirCartao={(k) => {
                   // A linha de fatura representa o ciclo que VENCE no mês exibido
-                  // (§4.8): vence depois do fechamento → ciclo do próprio mês; senão
-                  // o anterior. É o ciclo que o clique "vivo" carrega (§5.3).
+                  // (§4.8). Fonte única: diaFaturaNoMes (motor) — resolve o ciclo
+                  // que aterrissa aqui honrando pagamento efetivo e regime (Fase 2).
+                  // É o ciclo que o clique "vivo" carrega (§5.3). Fallback ao ciclo
+                  // do próprio mês se nenhuma fatura vence (não deveria abrir daí).
                   const alvoAbs = ano * 12 + mes;
-                  const cicloInicial = k.dia_pagamento > k.dia_fechamento ? alvoAbs : alvoAbs - 1;
+                  const landed = diaFaturaNoMes(k, alvoAbs, indicePagamentos, indiceCiclos);
+                  const cicloInicial = landed?.cicloAbs ?? alvoAbs;
                   setPagina({ tela: 'drill-cartao', cartao: k, cicloInicial });
                 }}
                 saldoInicial={herdado}
@@ -893,13 +906,14 @@ function Lancamentos(props: {
   lancamentosRaw: Lancamento[];
   excecoes: IndiceExcecoes;
   pagamentos: IndicePagamentos;
+  ciclos: IndiceCiclos;
   hoje: Date;
   onEditar: (o: OcorrenciaLancamento) => void;
   onApagarTransf: (t: OcorrenciaTransferencia) => void;
   onAbrirCartao: (k: Cartao) => void;
   saldoInicial: number;
 }) {
-  const { ano, mes, ocorrencias, transferencias, cartoes, contaPorId, faturaDoMes, lancamentosRaw, excecoes, pagamentos, hoje, onEditar, onApagarTransf, onAbrirCartao, saldoInicial } = props;
+  const { ano, mes, ocorrencias, transferencias, cartoes, contaPorId, faturaDoMes, lancamentosRaw, excecoes, pagamentos, ciclos, hoje, onEditar, onApagarTransf, onAbrirCartao, saldoInicial } = props;
 
   // Agrupa por dia. A data de cada ocorrência já vem resolvida pelo motor
   // (§4.1: âncora no dia + clamp). A fatura de cada cartão entra no DIA DO
@@ -929,23 +943,18 @@ function Lancamentos(props: {
       (porDia.get(dia) ?? porDia.set(dia, []).get(dia)!).push({ kind: 'transferencia', t });
     }
     // Fatura: descobre o ciclo que REALMENTE cai neste mês (§5.3 — a data
-    // efetiva de pagamento pode ter movido a linha de ±1 mês). O dia, o
-    // realizado e a fase são derivados desse ciclo, não do ciclo-padrão.
+    // efetiva de pagamento pode ter movido a linha de ±1 mês, e o regime pode
+    // variar por ciclo). Fonte única: diaFaturaNoMes (motor). O dia, o realizado
+    // e a fase são derivados desse ciclo, não do ciclo-padrão.
     const alvoAbs = ano * 12 + mes;
     for (const k of cartoes) {
       const peso = faturaDoMes.get(k.id) ?? 0;
       if (peso <= 0) continue; // nenhuma fatura pesa neste mês para este cartão
-      const cicloPadrao = k.dia_pagamento > k.dia_fechamento ? alvoAbs : alvoAbs - 1;
-      let cicloAbs: number | null = null;
-      let dia = diaPagamentoNoMes(k, ano, mes);
-      for (const c of [cicloPadrao - 1, cicloPadrao, cicloPadrao + 1]) {
-        if (c < 0) continue;
-        const pos = posicaoFatura(k, c, pagamentos);
-        if (pos.mesAbs === alvoAbs) { cicloAbs = c; dia = pos.dia; break; }
-      }
-      if (cicloAbs == null) continue;
-      const realizado = realizadoDoCiclo(doCartao(k.id), k, cicloAbs, hoje, excecoes);
-      const fase = faseMap(faseDoCiclo(cicloAbs, k, hoje));
+      const landed = diaFaturaNoMes(k, alvoAbs, pagamentos, ciclos);
+      if (landed == null) continue;
+      const { cicloAbs, dia } = landed;
+      const realizado = realizadoDoCiclo(doCartao(k.id), k, cicloAbs, hoje, excecoes, ciclos);
+      const fase = faseMap(faseDoCiclo(cicloAbs, k, hoje, ciclos));
       const diaClamp = Math.min(Math.max(dia, 1), new Date(ano, mes + 1, 0).getDate());
       (porDia.get(diaClamp) ?? porDia.set(diaClamp, []).get(diaClamp)!).push({ kind: 'fatura', k, cicloAbs, realizado, fase });
     }
@@ -962,7 +971,7 @@ function Lancamentos(props: {
         }
         return { dia, itens, saldoAcumulado: acc };
       });
-  }, [ocorrencias, transferencias, cartoes, faturaDoMes, saldoInicial, ano, mes, contaPorId, lancamentosRaw, excecoes, pagamentos, hoje]);
+  }, [ocorrencias, transferencias, cartoes, faturaDoMes, saldoInicial, ano, mes, contaPorId, lancamentosRaw, excecoes, pagamentos, ciclos, hoje]);
 
   if (grupos.length === 0) {
     return (
@@ -1015,7 +1024,7 @@ function Lancamentos(props: {
                   <LinhaDeFatura
                     key={`fat-${it.k.id}-${i}`}
                     titulo={it.k.nome}
-                    tagTexto={`fecha dia ${it.k.dia_fechamento}`}
+                    tagTexto={`fecha dia ${regimeDoCiclo(it.k, it.cicloAbs, ciclos).dia_fechamento}`}
                     tagTema={contaPorId.get(it.k.conta_id)?.tema}
                     fase={it.fase}
                     realizado={it.realizado}

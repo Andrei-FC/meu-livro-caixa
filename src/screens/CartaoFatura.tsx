@@ -6,9 +6,11 @@ import {
   faseCarteiraDoCiclo,
   intervaloPagamento,
   posicaoFatura,
+  regimeDoCiclo,
   type OcorrenciaLancamento,
   type IndiceExcecoes,
   type IndicePagamentos,
+  type IndiceCiclos,
 } from '../lib/recorrencia';
 import type { Cartao, Lancamento } from '../types/db';
 
@@ -57,6 +59,8 @@ type Props = {
   excecoes: IndiceExcecoes;
   /** Pagamentos efetivos por cartão+ciclo (§4.4) — data efetiva sobrepõe o dia_pagamento. */
   pagamentos: IndicePagamentos;
+  /** Regimes de ciclo versionados (Fase 2) — dia_fechamento/pagamento por vigência. */
+  ciclos: IndiceCiclos;
   hoje: Date;
   /** Ciclo (abs) que a coisa clicada representa — o card da Carteira passa o
    *  ciclo vivo; a linha de fatura da Home passa o ciclo que vence naquele mês.
@@ -74,6 +78,7 @@ export function CartaoFatura({
   lancamentos,
   excecoes,
   pagamentos,
+  ciclos,
   hoje,
   cicloInicial,
   onVoltar,
@@ -89,22 +94,22 @@ export function CartaoFatura({
   }
 
   const realizado = useMemo(
-    () => realizadoDoCiclo(lancamentos, cartao, cicloAbs, hoje, excecoes),
-    [lancamentos, cartao, cicloAbs, hoje, excecoes],
+    () => realizadoDoCiclo(lancamentos, cartao, cicloAbs, hoje, excecoes, ciclos),
+    [lancamentos, cartao, cicloAbs, hoje, excecoes, ciclos],
   );
 
   // Fase pela régua da Carteira (§5.6): o drill-down espelha o ciclo — fechada
   // se é obrigação pendente, aberta se acumulando/futuro/pago. Devolve também o
   // evento (fecha/vence DD mmm).
   const status = useMemo(
-    () => faseCarteiraDoCiclo(cartao, cicloAbs, hoje, pagamentos),
-    [cartao, cicloAbs, hoje, pagamentos],
+    () => faseCarteiraDoCiclo(cartao, cicloAbs, hoje, pagamentos, ciclos),
+    [cartao, cicloAbs, hoje, pagamentos, ciclos],
   );
   const fase = status.fase;
 
   const ocorrencias = useMemo(
-    () => ocorrenciasDoCiclo(lancamentos, cartao, cicloAbs, hoje, excecoes),
-    [lancamentos, cartao, cicloAbs, hoje, excecoes],
+    () => ocorrenciasDoCiclo(lancamentos, cartao, cicloAbs, hoje, excecoes, ciclos),
+    [lancamentos, cartao, cicloAbs, hoje, excecoes, ciclos],
   );
 
   // Hero: mesmas informações do card da Carteira (§5.6). Valor grande = realizado
@@ -140,7 +145,7 @@ export function CartaoFatura({
   const [sheetPagamento, setSheetPagamento] = useState(false);
 
   // Intervalo válido de data de pagamento (§5.3): [fechamento, próximo fechamento).
-  const intervalo = useMemo(() => intervaloPagamento(cartao, cicloAbs), [cartao, cicloAbs]);
+  const intervalo = useMemo(() => intervaloPagamento(cartao, cicloAbs, ciclos), [cartao, cicloAbs, ciclos]);
 
   // Data default do campo: pagamento já registrado (edição), senão hoje —
   // clampada dentro do intervalo válido (não pode antes do fechamento nem
@@ -156,9 +161,11 @@ export function CartaoFatura({
   }, [pagamentos, cartao.id, cicloAbs, hoje, intervalo]);
 
   // Caption "Vencimento desse cartão DD/MM" (dia_pagamento sobre dia_fechamento,
-  // como no Figma "10/06"). O mês é o do vencimento-padrão do ciclo.
-  const posPadrao = useMemo(() => posicaoFatura(cartao, cicloAbs), [cartao, cicloAbs]);
-  const vencimentoTexto = `Vencimento desse cartão ${String(cartao.dia_pagamento).padStart(2, '0')}/${String(
+  // como no Figma "10/06"). O dia de pagamento vem do REGIME vigente do ciclo
+  // (Fase 2); o mês é o do vencimento-padrão do ciclo.
+  const posPadrao = useMemo(() => posicaoFatura(cartao, cicloAbs, undefined, ciclos), [cartao, cicloAbs, ciclos]);
+  const diaPagRegime = regimeDoCiclo(cartao, cicloAbs, ciclos).dia_pagamento;
+  const vencimentoTexto = `Vencimento desse cartão ${String(diaPagRegime).padStart(2, '0')}/${String(
     (posPadrao.mesAbs % 12) + 1,
   ).padStart(2, '0')}`;
 
