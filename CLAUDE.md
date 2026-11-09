@@ -177,8 +177,5 @@ casal. Não "corrija" isso sem conversar.
   de **saldo zero ao arquivar conta** (§4.10 trava a regra, o código arquiva
   direto), não há **desarquivar**, não há **área de arquivados** e a **edição de
   parcela** está travada em leitura.
-- **Arquivos obsoletos:** `handoff-escopo-primeiro.md` (já implementado — o
-  `EscopoSheet.tsx` que ele manda converter nem existe mais) e `home-real.patch`.
-  Ignore os dois.
 - **Zero testes** num motor puro de ~1400 linhas. As regras de ciclo de cartão já
   renderam três commits de `fix:` — é o candidato óbvio a teste unitário.
