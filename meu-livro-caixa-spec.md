@@ -5,7 +5,72 @@
 > desenhar no Figma, contrato do que o banco (Supabase) precisa suportar, e
 > spec de implementação.
 
-**Versão:** 0.10 (rascunho de decisões) · **Última atualização:** jul/2026
+**Versão:** 0.11 (rascunho de decisões) · **Última atualização:** nov/2026
+
+> **Mudanças na v0.11** (sessão de documentação — reconcilia o spec com o código,
+> que andou cinco commits além da v0.10; nenhuma decisão nova de produto, exceto
+> onde marcado):
+>
+> - **O schema do banco sai do painel e entra no git** (§3). Nasce
+>   **`db/schema.sql`** — o DDL real das 7 tabelas (tipos, defaults, CHECKs, FKs
+>   com `ON DELETE`, índices, policies de RLS), extraído por introspecção, mais
+>   **`db/dump-schema.sql`** para re-extrair quando o banco mudar. A §3 passa a ser
+>   o **contrato conceitual** (o que cada campo significa e por quê) e delega os
+>   fatos ao `schema.sql`. Motivador: `src/types/db.ts` citava um `schema.sql` que
+>   nunca existiu, e tipos TypeScript não carregam `DEFAULT`, `CHECK` nem
+>   `ON DELETE` — qualquer mudança de constraint era palpite.
+> - **A §3 passa a cobrir as 7 tabelas.** Ganham seção própria `excecoes_serie`
+>   (§3.5), `cartoes_pagamentos` (§3.6) e `cartoes_ciclos` (§3.7) — as três
+>   existiam no banco e viviam só em comentário de código ou em nota de changelog.
+>   Registro novo e importante: **`excecoes_serie.serie_id` não tem FK** (de
+>   propósito — `serie_id` vive em duas tabelas), logo **apagar uma série não
+>   limpa suas exceções em cascata**; órfãs ficam.
+> - **Regime de ciclo versionado no tempo** (§3.7, §4.4). Mudar fechamento/
+>   vencimento de um cartão **não** sobrescreve `cartoes.dia_*` — grava uma linha
+>   de vigência em `cartoes_ciclos`, válida de um ciclo em diante. Sobrescrever
+>   reclassificaria faturas antigas, reescrevendo o passado (princípio 3). Na
+>   edição o vencimento é um **date picker de data concreta**, e essa data **é** a
+>   fonte da âncora (não uma derivação de hoje); o piso é o primeiro ciclo cujo
+>   fechamento ainda não ocorreu — espelha a regra do banco ("fatura fechada é
+>   obrigação, não se remaneja"). Mudar o fechamento pode migrar lançamentos entre
+>   ciclos: quando migra, um **aviso explícito** (quantos entram/saem) aparece
+>   antes de confirmar. A duração do ciclo-ponte é **emergente** (~30 ou ~47 dias);
+>   **não existe entidade "fatura-ponte"**.
+> - **Fechamento é "N dias antes do vencimento", não uma data fixa** (§4.4, §5.8).
+>   O usuário informa o dia do vencimento e quantos dias antes fecha;
+>   `dia_fechamento` é derivado. É como o banco comunica o cartão, e mata o par de
+>   datas incoerente que dois campos independentes permitiam. Trava: N ≥ 1 e o
+>   fechamento no mesmo mês (`vencimento − N ≥ 1`), bloqueada no formulário.
+> - **Cartão agora arquiva** (§3.2 `arquivado_em`, §4.10, §5.8) — e, diferente da
+>   conta, **sem pré-condição nenhuma**. Não há saldo a esvaziar num cartão: o que
+>   existe é fatura, que é derivada. Exigir "fatura zerada" travaria justamente o
+>   caso normal — parar de usar um cartão que ainda tem parcelas correndo. Por
+>   isso **arquivar cartão preserva passado E futuro**: as parcelas em curso
+>   seguem gerando fatura nos meses em que vencem. "Não lanço mais aqui" ≠ "esqueça
+>   o que já está lançado". A §4.10 deixa de ser só "de contas".
+> - **Entradas e Saídas são lidas no eixo de CAIXA** (§5.1, §5.6). Os dois números
+>   do card de resumo viram uma **decomposição de `liquidoDoMes`**, para que
+>   `herdado + entradas − saídas` **feche exatamente** com o saldo exibido. Logo: a
+>   **fatura** entra nas saídas do mês em que **vence** (as compras não entram
+>   individualmente — seria dupla contagem, e no mês errado), e **depósito em
+>   poupança é saída**. O mesmo vale por conta na aba Contas, onde a fatura pesa na
+>   **conta pagadora** e as transferências somam. Lido pelo eixo de consumo, os
+>   números não fechariam — esse eixo é do relatório (§4.8). Junto: o **rótulo
+>   acompanha o significado** (saldo vivo/consolidado/previsto; Entradas/Saídas
+>   viram "Previstas" em meses futuros), para o número nunca mentir sobre ser fato
+>   ou projeção.
+> - **Correção: o escopo de série é um MODAL, não um bottom sheet** (§5.7).
+>   **Revoga** a frase que sobrou da v0.8 ("é um bottom sheet, não um modal de
+>   alerta") — na prática virou a variante `escopo` do `Modal de alerta`, e é o
+>   certo: o escopo é um **portão antes** de montar o editor, não um passo dentro
+>   dele. Cai também o **aviso de desvínculo separado** (a variante `Aviso` nunca
+>   existiu no componente): a explicação vive na **descrição da própria opção de
+>   escopo**, lida antes de escolher — alerta extra depois seria redundante.
+>   Registrado ainda que **parcela não passa pelo modal** (abre em leitura, só
+>   Excluir).
+> - **§8 ganha quatro itens** que estavam implícitos: área de arquivados,
+>   desarquivar (não existe), a checagem de saldo zero ao arquivar conta (regra
+>   travada, código não alcançou) e a edição de parcela.
 
 > **Mudanças na v0.10** (sessão de implementação — costura de ajustes; reconcilia
 > trabalho feito em paralelo à separação Cartões/Contas da v0.9):
@@ -223,7 +288,8 @@
 >
 > **Mudanças na v0.5** (sessão de design): **simplificada a categorização.**
 > Removido o **agrupamento** (grupo › categoria) — adiado para versão futura:
-> saem a tabela `grupos_categoria` (§3.5), o item "Agrupar" (§4.6) e a visão
+> saem a tabela `grupos_categoria` (então §3.5; o número foi reusado na v0.11
+> pela `excecoes_serie`), o item "Agrupar" (§4.6) e a visão
 > agrupada do relatório (§5.5). Removido também o **fundir** do relatório — a
 > consistência de categoria passa a ser **prevenção no lançar** (autocomplete +
 > pill) e **correção via edição do lançamento** (§4.6, §5.7); o **relatório vira
@@ -260,7 +326,7 @@
 > **rebaixada** de destaque para um recorte do relatório (§5.5); adicionada a
 > tela de **Edição** (§5.7); adicionado **agrupamento de categorias** opcional e
 > emergente (grupo › categoria, um nível), distinto de fundir — nova tabela
-> `grupos_categoria` (§3.5), regras em §4.6, visão no §5.5. *(Tanto o
+> `grupos_categoria` (então §3.5), regras em §4.6, visão no §5.5. *(Tanto o
 > agrupamento quanto o fundir foram posteriormente removidos na v0.5.)*
 
 ---
@@ -331,8 +397,14 @@ Vocabulário travado. Usar estes termos no Figma e no código.
 
 ## 3. Modelo de dados
 
-Entidades, campos e relações. Formatado para virar tabelas no Supabase
-(Postgres). Tipos são indicativos; ajustar na implementação.
+Entidades, campos e relações. Esta seção é o **contrato conceitual** — o que
+cada campo significa e por quê.
+
+> **O DDL de verdade vive em `db/schema.sql`** (v0.11), extraído por introspecção
+> do banco: tipos exatos, defaults, CHECKs, FKs com `ON DELETE` e policies de
+> RLS. Para mexer em coluna ou constraint, consulte-o — e re-extraia com
+> `db/dump-schema.sql` quando o banco mudar. Aqui ficam os porquês; lá, os fatos.
+> O espelho em TypeScript é `src/types/db.ts`.
 
 ### 3.1 `contas` (conta-corrente e poupança)
 
@@ -360,11 +432,12 @@ Entidades, campos e relações. Formatado para virar tabelas no Supabase
 | `nome` | text | "Nubank", "Inter" |
 | `conta_id` | uuid | **FK → contas, NOT NULL, ON DELETE RESTRICT.** Conta-corrente que paga a fatura (§4.4/§4.5). Criar cartão exige conta existente. |
 | `previsao_mensal` | numeric? | **teto de previsão/gasto** mensal (placeholder), não o limite do banco — ver §4.4; `null` = sem previsão (só acumula realizado) |
-| `dia_fechamento` | int | dia do mês em que a fatura fecha (gatilho previsto→realizado) |
-| `dia_pagamento` | int | dia do mês de vencimento (define em que mês a fatura pesa no saldo) |
+| `dia_fechamento` | int | dia do mês em que a fatura fecha (gatilho previsto→realizado). **É o regime-base** — vale desde sempre, salvo onde `cartoes_ciclos` (§3.7) sobrepõe |
+| `dia_pagamento` | int | dia do mês de vencimento (define em que mês a fatura pesa no saldo). **Regime-base**, idem |
 | `tema` | text? | chave do tema visual (resolve fundo + texto no design system) — ver §4.9 |
 | `banco` | text? | chave do banco na biblioteca fixa — ver §4.9 |
 | `bandeira` | text? | chave da bandeira na biblioteca fixa — ver §4.9 |
+| `arquivado_em` | timestamp? | `null` = ativo; preenchido = arquivado (ver §4.10) |
 | `criado_em` | timestamp | |
 
 - **Vínculo obrigatório com conta** (decisão revista na v0.8; **revoga** o "sem
@@ -431,6 +504,72 @@ muda a categoria, não cria hierarquia. Ver §5.5.
 - **Pode ser recorrente** (ex.: "todo mês guardo R$500"): usa o mesmo motor de
   recorrência dos lançamentos (§4.1), com os 3 modos de edição/exclusão (§4.3).
   **Nunca** é parcelada — não existe dividir um total numa transferência.
+
+### 3.5 `excecoes_serie`
+
+Exceções de ocorrência de uma série (§4.3). O motor materializa a série na
+leitura e consulta esta tabela para saber o que, naquele mês, difere da regra.
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `serie_id` | uuid | **agrupador lógico, SEM FK** (ver nota abaixo) |
+| `mes_alvo` | text | **YYYY-MM**, nunca data completa. `UNIQUE (serie_id, mes_alvo)` |
+| `excluida` | bool | `true` = ocorrência removida no escopo "só esta"; o motor a pula |
+| `valor` | numeric? | override; `null` = herda da regra |
+| `descricao` | text? | override; `null` = herda |
+| `nota` | text? | override; `null` = herda |
+| `criada_em` | timestamp | |
+
+- **Chaveada por mês, não por data** (v0.8): a série tem no máximo uma ocorrência
+  por mês, e chavear por mês torna a exceção **imune a mudança de dia-âncora** —
+  mudar o dia da regra em "todas" não órfã as exceções. Chavear por data cheia já
+  causou duplicação observada em teste.
+- **`serie_id` não tem FK, de propósito:** ele vive tanto em `lancamentos` quanto
+  em `transferencias`, então não há tabela-alvo única para referenciar.
+  **Consequência:** apagar as linhas de uma série **não** limpa as exceções em
+  cascata — órfãs ficam e devem ser removidas explicitamente.
+
+### 3.6 `cartoes_pagamentos`
+
+Override **pontual e retroativo** de **um** ciclo: "esta fatura foi paga neste
+dia", diferente do `dia_pagamento` padrão (§4.4).
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `cartao_id` | uuid | FK → cartoes, `ON DELETE CASCADE` |
+| `ciclo_abs` | int | índice de mês absoluto (`ano*12 + mês 0-11`) do ciclo que **fecha** — identifica a fatura univocamente, imune a fuso. `UNIQUE (cartao_id, ciclo_abs)` |
+| `data_paga` | date | data efetiva do pagamento |
+| `criado_em` | timestamp | |
+
+- Governa a **virada de fase** do cartão (§4.4): com pagamento registrado, o
+  vencimento efetivo é `data_paga`, não o `dia_pagamento`.
+- Cartão sem pagamento registrado num ciclo simplesmente não tem linha aqui.
+
+### 3.7 `cartoes_ciclos` — regime de ciclo versionado (v0.11)
+
+Mudança **prospectiva e permanente** do regime de fechamento/vencimento, sem
+reescrever o passado. Ortogonal a `cartoes_pagamentos` (§3.6): lá é um fato
+pontual sobre uma fatura; aqui é "do ciclo X em diante, as datas passam a ser
+estas".
+
+| Campo | Tipo | Notas |
+|---|---|---|
+| `id` | uuid | PK |
+| `cartao_id` | uuid | FK → cartoes, `ON DELETE CASCADE` |
+| `desde_ciclo_abs` | int | 1º ciclo de **fechamento** (`ano*12 + mês 0-11`) que este regime governa. `UNIQUE (cartao_id, desde_ciclo_abs)` |
+| `dia_fechamento` | int | |
+| `dia_pagamento` | int | |
+| `criado_em` | timestamp | |
+
+- **Resolução do regime vigente de um ciclo:** a linha de maior
+  `desde_ciclo_abs ≤ cicloAbs`; não havendo nenhuma, o **campo-base** em
+  `cartoes` (§3.2). Cartão que nunca mudou de datas **não tem linha aqui** — o
+  modelo é retrocompatível por construção.
+- Por que uma tabela e não um UPDATE em `cartoes`: sobrescrever `dia_*`
+  reclassificaria faturas antigas, reescrevendo o passado (viola o princípio 3).
+  Ver §4.4.
 
 ---
 
@@ -700,6 +839,47 @@ realizado)` enquanto o ciclo está aberto e consolida no realizado quando fecha
 (30/jun); o mês em que ela impacta o saldo é julho (pagamento). Ver também §4.8
 (o eixo de consumo, no relatório, lê pela data da compra — junho).
 
+**Fechamento é "N dias antes do vencimento", não uma data fixa (v0.11).** No
+cadastro, o usuário informa o **dia do vencimento** e **quantos dias antes** a
+fatura fecha — `dia_fechamento` é derivado (`vencimento − N`), nunca digitado
+direto. É como o banco comunica o cartão ("fecha 7 dias antes de vencer") e evita
+o par de datas incoerente que dois campos independentes permitiam.
+
+- **N ≥ 1**, e o fechamento tem de cair **no mesmo mês** do vencimento
+  (`dia_vencimento − N ≥ 1`). A combinação que violaria isso é bloqueada no
+  formulário, não aceita e corrigida depois.
+- A ordem relativa das duas datas continua governando em que mês a fatura pesa
+  (§4.8): `dia_pagamento > dia_fechamento` → vence no mês do fechamento.
+
+**Mudar as datas de um cartão não reescreve o passado (v0.11).** Editar
+fechamento/vencimento **não** faz UPDATE em `cartoes.dia_*` — isso
+reclassificaria faturas antigas, mudando retroativamente a qual ciclo cada compra
+pertence (viola o princípio 3). Em vez disso, grava uma linha de vigência em
+`cartoes_ciclos` (§3.7), e o regime passa a valer **de um ciclo em diante**.
+
+- **Na criação**, o vencimento é só o **dia numérico** (repete todo mês) + os N
+  dias antes. Não há date picker nem linha em `cartoes_ciclos` — o cartão nasce
+  com o regime-base.
+- **Na edição**, o vencimento é um **date picker de data concreta** — a próxima
+  data real de vencimento. **Essa data é a fonte da verdade da âncora**
+  (`ancoraDeVencimento`), não uma derivação de hoje: o usuário declara um fato
+  ("vence 15/ago"), o app deriva o `desde_ciclo_abs`.
+- **Piso do picker:** o primeiro ciclo cujo fechamento **ainda não ocorreu**
+  (`pisoMudancaDeRegime`). Não dá para ancorar num ciclo já fechado — espelha a
+  regra do banco: enquanto a fatura não fechou dá para remanejá-la; depois virou
+  obrigação a pagar e é intocável.
+- **Aviso de migração de faturas.** Mudar o **fechamento** pode reclassificar
+  lançamentos do ciclo-alvo que cruzam a nova fronteira. O motor faz isso
+  automaticamente e corretamente, mas o **valor de uma fatura muda em relação ao
+  que o usuário esperava** — então, se algum lançamento migra, um aviso explícito
+  (quantos entram, quantos saem) aparece **antes** de confirmar. Princípios 3 e 4:
+  nada muda de valor sem rastro.
+- **A duração do ciclo é emergente.** Ao mudar o regime, o ciclo-ponte pode durar
+  ~30 ou ~47 dias. **Não existe entidade "fatura-ponte"** — a atribuição de cada
+  compra sai de `cicloDeFechamentoAbs`, que avalia o fechamento do regime vigente
+  de cada ciclo candidato. Com regime versionado não basta comparar com um dia
+  fixo, porque candidatos vizinhos podem ter dias de fechamento diferentes.
+
 ### 4.5 Contas, transferências, Cofre e poupança
 
 **Contas.** Todo lançamento pertence a uma **conta** (tag). A lista principal do
@@ -848,10 +1028,11 @@ relatório. O dado guarda apenas referências; o visual vive no design system.
   cartão pinta o card inteiro; conta pinta só a testeira). O spec só garante que
   o dado é o mesmo nos dois; a diferenciação visual cartão × conta fica no Figma.
 
-### 4.10 Ciclo de vida de contas (apagar × arquivar)
+### 4.10 Ciclo de vida de contas e cartões (apagar × arquivar)
 
-Onboarding e desativação de contas. Vale para conta-corrente e poupança, com
-uma exigência a mais para corrente (detalhada abaixo).
+Onboarding e desativação. Vale para conta-corrente e poupança, com uma exigência
+a mais para corrente (detalhada abaixo), e — desde a v0.11 — **também para
+cartões**, com uma régua própria (ver o fim desta seção).
 
 **Onboarding — não há conta default invisível.** O app **obriga criar ao menos
 uma conta** antes do primeiro lançamento. Não existe uma conta "Geral"/"Carteira"
@@ -887,6 +1068,26 @@ meses de histórico forçaria editar lançamento por lançamento para "esvaziar"
 atrito proibido (princípio 1) e, pior, mexer no passado em massa (viola o
 princípio 3). Arquivar resolve sem tocar no histórico.
 
+**Arquivar cartão (v0.11) — sem pré-condição.** Cartão também arquiva, via
+`cartoes.arquivado_em` (§3.2), e sai das listas ativas (aba Cartões, seletor do
+Lançar, gestão). A diferença em relação à conta é deliberada:
+
+- **Conta exige saldo zero**; **cartão não exige nada.** Não há "saldo" a
+  esvaziar num cartão — o que existe é fatura, e fatura é derivada, não um saldo
+  preso. Exigir "fatura zerada" travaria o caso normal: parar de usar um cartão
+  que ainda tem parcelas correndo.
+- **Arquivar preserva passado E futuro.** Diferente da conta arquivada (cujo
+  futuro é só histórico), o cartão arquivado **continua produzindo faturas** para
+  as parcelas em curso — elas seguem pesando no saldo dos meses em que vencem.
+  Arquivar diz "não lanço mais neste cartão", não "esqueça o que já está lançado".
+- **Apagar cartão** continua sendo o caso raro de cadastro errado e esbarra na FK
+  `ON DELETE RESTRICT` de `lancamentos.cartao_id`: cartão com lançamento não é
+  apagável, por construção do banco.
+
+> **Em aberto:** a checagem de **saldo zero ao arquivar conta** ainda não está
+> implementada (hoje arquiva direto). Está registrada aqui como regra; o código
+> precisa alcançá-la (§8).
+
 ---
 
 ## 5. Telas & fluxos
@@ -912,6 +1113,19 @@ Inventário das telas, com propósito, conteúdo e estados.
     levaria ao "ajuste" que o princípio 4 combate. (O saldo de um dia específico
     já é legível **na lista**, linha a linha, após cada transação — não precisa de
     resumo parcial.)
+  - **Entradas e Saídas são lidas no EIXO DE CAIXA (v0.11).** Os dois números são
+    uma **decomposição de `liquidoDoMes`**, não uma contagem independente — de
+    modo que **`herdado + entradas − saídas` fecha exatamente com o saldo
+    exibido**. Consequências, todas vindas do princípio "a data manda" (§4.8):
+    - A **fatura do cartão** entra nas **saídas do mês em que vence**, como uma
+      linha só. As compras que a compõem **não** entram individualmente — seria
+      dupla contagem, e no mês errado.
+    - **Depósito em poupança entra nas saídas** (o dinheiro saiu da corrente); a
+      retirada, nas entradas. Transferência entre correntes continua **neutra**
+      nos dois números (§4.5).
+    - Ler Entradas/Saídas pelo **eixo de consumo** (data da compra) daria números
+      que **não fecham** com o saldo. O relatório (§5.5) é que lê por consumo —
+      são perguntas diferentes, e cada tela usa o eixo que a sua resposta exige.
 - **Navegação:** entre meses (anteriores e próximos), ilimitada. A **navegação
   principal** é a barra inferior de **4 abas** — Lançamentos · Cartões · Contas ·
   Relatório (v0.9; §5.6). O seletor de mês do topo vale para Lançamentos, Contas
@@ -1133,6 +1347,17 @@ mensal da Home.
 - **Conta Corrente:** cards compactos de conta (ícone temático + nome + **Saldo
   Atual** + **Entradas/Saídas** do mês exibido). Saldo Atual é a foto do presente
   (corte = hoje, §4.7); Entradas/Saídas acompanham o mês navegado.
+  - **Os números por conta fecham com o saldo da conta (v0.11)** — mesma régua de
+    caixa do card de resumo (§5.1): a **fatura de cada cartão entra como saída da
+    conta pagadora** (`cartoes.conta_id`), e as **transferências somam** nas
+    entradas/saídas da conta de origem e destino. Sem isso os três números do card
+    não batiam entre si.
+  - **O rótulo acompanha o significado do saldo (v0.11).** "Saldo Atual" só é
+    literal no mês corrente; navegando, o mesmo número é **consolidado** (mês
+    passado, tudo é fato) ou **previsto** (mês futuro, tudo é projeção) — e o
+    rótulo muda junto. Pelo mesmo motivo, **Entradas/Saídas viram "Previstas"** em
+    meses futuros. O número nunca mente sobre o que é: fato ou projeção
+    (princípio 3).
 - **Cofre:** cards compactos de poupança, **mesmo layout** da conta, legendas
   próprias — **Guardado** (saldo, foto do presente) / **Depositos** / **Retiradas**
   (do mês exibido). **Sem totalização** aqui (o "TOTAL GUARDADO" continua só na
@@ -1164,7 +1389,8 @@ futuras · todas** — e ela **define quais campos e mudanças o editor oferece*
   Qualquer mudança de natureza/cardinalidade **desvincula** a ocorrência (§4.3):
   vira um lançamento avulso — e, no caso de parcelar, o editor abre as opções de
   parcelamento no próprio sheet e salva de uma vez (remove da série + cria o
-  parcelado). Um aviso claro sinaliza que a ocorrência sairá da série.
+  parcelado). O desvínculo é sinalizado pela descrição da própria opção de
+  escopo, não por um alerta extra (ver abaixo).
 - **Esta e as futuras / Todas** → só o que a série inteira comporta: grandeza e
   natureza-de-regra (trocar banco para todos, mudar dia-âncora, mudar meio à
   vista). **Parcelar não aparece** (não faz sentido em múltiplos meses). Nada
@@ -1178,18 +1404,25 @@ frustração, contra o princípio 1 e o princípio 4. **A pergunta de escopo obe
 à experiência, não o contrário.** Some, portanto, o antigo bloqueio de troca de
 conta/cartão que só avisava ao salvar.
 
-- **É um bottom sheet** (não um modal de alerta): escolha de fluxo de três
-  caminhos, parte normal de mexer numa recorrência, e melhor para uso de uma mão
-  (princípio 1). A variante `Escopo` **não** vive no component set `Modal de
-  alerta`.
+- **É um modal — variante `escopo` do `Modal de alerta`** (corrigido na v0.11;
+  **revoga** o "é um bottom sheet, não um modal" que ficou escrito na v0.8).
+  Título "Lançamento recorrente", subtítulo "Esse lançamento se repete todo mês.
+  O que você quer alterar?", as três opções como radio **com descrição**, e
+  Continuar/Cancelar. Dupla confirmação: selecionar ≠ aplicar — confirma no botão.
+  Por que modal e não sheet: o escopo é um **portão** antes de montar o editor
+  (§4.3), não um passo dentro dele; o sheet sugeriria que já se está editando.
 - **Exceção destrutiva — excluir "todas":** após a escolha de escopo, vem um
-  **segundo passo** de **confirmação de bloqueio** (aí sim um modal), porque apaga
-  passado consolidado (§4.3). "Só esta" e "esta e as futuras" **não** disparam
-  essa confirmação.
-- **Aviso de desvínculo** (natureza/cardinalidade no "só esta"): sinalização
-  clara de que a ocorrência deixará a série e virará avulso — via `Modal de
-  alerta` variante Aviso. É a "junta" que torna o desvínculo explícito, nunca
-  silencioso (microcópia a definir; não implementado ainda).
+  **segundo passo** de confirmação (variante `bloqueio`), porque apaga passado
+  consolidado (§4.3). "Só esta" e "esta e as futuras" **não** disparam essa
+  confirmação.
+- **Não há aviso de desvínculo separado** (v0.11 — revoga a variante `Aviso`
+  prevista na v0.8, que não existe no componente). A explicação vive na
+  **descrição da própria opção de escopo** ("Muda apenas este mês, sem afetar os
+  outros"), que o usuário lê *antes* de escolher. Um alerta extra depois seria
+  redundante e viraria atrito (princípio 1).
+- **Parcela não passa pelo modal** e abre o editor direto, com os campos em
+  **leitura** e **Excluir** como única ação (que mantém seu próprio fluxo de
+  escopo). É proposital e provisório: editar parcela é outro debate (§8).
 
 ### 5.8 Gestão (implícito)
 
@@ -1197,10 +1430,17 @@ conta/cartão que só avisava ao salvar.
   de gestão (não dentro do Cofre). Cada uma com seletor de **tema** + **ícone**
   (§4.9).
 - **Apagar** e **arquivar** seguem §4.10: apagar exige conta vazia; arquivar
-  exige saldo zero. Contas arquivadas saem da gestão ativa (podem ter uma área
-  "arquivadas" separada, a definir no design).
+  conta exige saldo zero; **arquivar cartão não exige nada** (v0.11). Arquivados
+  saem da gestão ativa (podem ter uma área "arquivadas" separada, a definir no
+  design).
 - **Cartão:** o campo de valor usa o vocabulário de **previsão** (§4.4), não
-  "limite".
+  "limite". As datas são **vencimento + N dias antes** (§4.4), nunca dois dias
+  independentes — e, na edição, mudar as datas passa por date picker de data
+  concreta com piso no primeiro ciclo não fechado.
+- **"Arquivar cartão" fica no fim do corpo da tela, não no footer** (v0.11) —
+  atrás do Salvar fixo, exigindo rolar para alcançar. Mesmo padrão de
+  Criar/Editar Conta: ação de baixa frequência e efeito amplo não compete por
+  espaço com a ação primária (anti-toque-acidental, princípio 1).
 
 ---
 
@@ -1246,7 +1486,8 @@ conta/cartão que só avisava ao salvar.
 - **Hospedagem:** Vercel conectada ao repositório no GitHub (build automático,
   URL acessível pelo celular, instalável na tela inicial como PWA).
 - **Fluxo:** desenhar no Figma → implementar a partir do design → plugar
-  Supabase (schema desta doc) → subir no GitHub → deploy na Vercel.
+  Supabase (schema em `db/schema.sql`, contrato conceitual em §3) → subir no
+  GitHub → deploy na Vercel.
 
 ---
 
@@ -1270,7 +1511,14 @@ Honestamente ainda **não** decidido — fica para a fase de design:
   e tem a senha trocada direto no painel do Supabase. Reconsiderar só se o app
   ganhar mais usuários ou se perder o acesso direto ao backend.
 - **Área de contas arquivadas** na gestão (§5.8) — onde e como listar contas
-  arquivadas (se é que se listam).
+  **e cartões** arquivados (se é que se listam). Hoje eles simplesmente somem.
+- **Desarquivar** — não existe fluxo; sair do arquivo exige mexer no banco.
+- **Checagem de saldo zero ao arquivar conta** (§4.10) — a regra está travada,
+  mas o código ainda arquiva direto, sem conferir. Dívida de implementação, não
+  decisão em aberto.
+- **Edição de parcela** (§5.7) — hoje a parcela abre em leitura, com Excluir como
+  única ação. Mudar valor/data/meio de uma parcela isolada é um debate próprio
+  (o que acontece com as irmãs?), deliberadamente adiado.
 - **Animação/transição** do bottom sheet.
 - **Comportamento fino do autocomplete** (quantas sugestões, ordenação exata).
 - **Horizonte de 24 meses:** confirmado como ponto de partida; ajustável se na

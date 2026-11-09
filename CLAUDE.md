@@ -5,18 +5,20 @@ Supabase. Mobile-first (iPhone), interface em português.
 
 ## A fonte de verdade é o spec
 
-**`meu-livro-caixa-spec.md`** (v0.10) é o contrato do produto: visão, modelo de
+**`meu-livro-caixa-spec.md`** (v0.11) é o contrato do produto: visão, modelo de
 dados, regras de negócio, telas. O código referencia suas seções nos comentários
 (`§4.1`, `§4.3`...). **Leia a seção relevante antes de mexer na regra
 correspondente** — e, se a mudança revogar uma decisão, registre a revogação no
 bloco de "Mudanças" do topo do spec, como as versões anteriores fizeram. Esse
 histórico é o que impede refazer algo já descartado.
 
-Mapa rápido: §3 modelo de dados · §4.1 motor de recorrência · §4.3 edição de
-série (régua de 3 níveis) · §4.4 cartões e faturas · §4.5 contas/transferências/
-Cofre · §4.7 saldo contínuo · §4.8 os dois eixos de tempo da despesa de cartão ·
-§5.1 Home · §5.2 Lançar · §5.3 drill-down do cartão · §5.5 Relatório · §5.6 abas
-Cartões/Contas · §5.7 editar lançamento · §6 auth/RLS.
+Mapa rápido: §3 modelo de dados (§3.7 regime de ciclo versionado) · §4.1 motor de
+recorrência · §4.3 edição de série (régua de 3 níveis) · §4.4 cartões e faturas
+(fases, regime, "N dias antes") · §4.5 contas/transferências/Cofre · §4.7 saldo
+contínuo · §4.8 os dois eixos de tempo da despesa de cartão · §4.10 arquivar
+conta e cartão · §5.1 Home (eixo de caixa) · §5.2 Lançar · §5.3 drill-down do
+cartão · §5.5 Relatório · §5.6 abas Cartões/Contas · §5.7 editar lançamento ·
+§6 auth/RLS · §8 decisões em aberto.
 
 ### Os 5 princípios (régua de julgamento, §1)
 
@@ -171,11 +173,10 @@ casal. Não "corrija" isso sem conversar.
 - **Nomes de policy inconsistentes** entre tabelas (`auth full access`,
   `cartoes_ciclos_all`, `cartoes_pagamentos_authenticated_all`,
   `excecoes_serie_all_authenticated`). Cosmético.
-- **Spec parado na v0.10**, mas o código andou: arquivamento de cartão
-  (`cartoes.arquivado_em`), a tabela `cartoes_ciclos` inteira (documentada só em
-  comentário no código), o seletor de "dias antes" no fechamento, e a mudança de
-  Entradas/Saídas para o eixo de caixa no Relatório e na aba Contas. Ao mexer
-  nessas áreas, o código manda, não o spec.
+- **Dívidas de implementação registradas no spec §8**, não resolvidas: a checagem
+  de **saldo zero ao arquivar conta** (§4.10 trava a regra, o código arquiva
+  direto), não há **desarquivar**, não há **área de arquivados** e a **edição de
+  parcela** está travada em leitura.
 - **Arquivos obsoletos:** `handoff-escopo-primeiro.md` (já implementado — o
   `EscopoSheet.tsx` que ele manda converter nem existe mais) e `home-real.patch`.
   Ignore os dois.

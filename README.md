@@ -1,7 +1,9 @@
 # Meu Livro-Caixa
 
-PWA de finanças do casal — livro-razão contínuo. Spec v0.7.1.
-React + Vite + Supabase. Tokens extraídos do Figma (fonte de verdade).
+PWA de finanças do casal — livro-razão contínuo. Spec v0.11
+(`meu-livro-caixa-spec.md`). React + Vite + Supabase. Tokens extraídos do Figma
+(fonte de verdade). Convenções e invariantes em `CLAUDE.md`; schema do banco em
+`db/schema.sql`.
 
 ## Rodar localmente
 
