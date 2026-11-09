@@ -67,13 +67,18 @@ rode depois de cada alteração, sem exceção.
 `contas` (corrente + poupança) · `cartoes` · `lancamentos` · `transferencias` ·
 `excecoes_serie` · `cartoes_pagamentos` (override pontual e retroativo de UM
 ciclo) · `cartoes_ciclos` (versionamento prospectivo do regime de
-fechamento/vencimento). Tipos em `src/types/db.ts`, com comentário em cada campo
-não-óbvio.
+fechamento/vencimento).
 
-⚠️ **O schema SQL não está versionado.** Não há `schema.sql` nem `migrations/` no
-repo (apesar de `db.ts` citar um `schema.sql`). DDL, constraints e policies de
-RLS vivem só no painel do Supabase. **Antes de propor mudança de coluna,
-constraint ou RLS, peça o schema atual** — não deduza de `db.ts`.
+- **`db/schema.sql`** — o DDL real (colunas, CHECKs, FKs, índices, policies),
+  reconstruído por introspecção. **Consulte-o antes de mexer em coluna,
+  constraint ou RLS** — `db.ts` não carrega `DEFAULT`, `CHECK` nem `ON DELETE`.
+- **`db/dump-schema.sql`** — a query que re-extrai tudo. Rode no SQL Editor do
+  Supabase e atualize o `schema.sql` sempre que o schema mudar.
+- **`src/types/db.ts`** — o espelho em TypeScript, com comentário em cada campo
+  não-óbvio. Mantenha em sincronia com os dois acima.
+
+O schema vive no painel do Supabase, não em migrations versionadas: o
+`schema.sql` é um retrato, não um histórico. Se divergir do banco, o banco manda.
 
 ## Convenções
 
@@ -96,11 +101,22 @@ constraint ou RLS, peça o schema atual** — não deduza de `db.ts`.
 - **Exceções de série são chaveadas por `mes_alvo` (YYYY-MM)**, nunca por data
   completa. A série tem no máximo uma ocorrência por mês; chavear por mês torna
   a exceção imune a mudança de dia-âncora. Chavear por data já causou duplicação.
+  O banco reforça: `UNIQUE (serie_id, mes_alvo)` + `CHECK (mes_alvo ~
+  '^\d{4}-\d{2}$')`.
+- **`excecoes_serie.serie_id` não tem FK** (de propósito: `serie_id` vive em duas
+  tabelas, não há alvo único). Logo **apagar as linhas de uma série não limpa as
+  exceções em cascata** — órfãs ficam. Limpe explicitamente.
 - **"Esta e as futuras" mantém o mesmo `serie_id`** — identidade contínua. Um
   aluguel reajustado é o mesmo item com valor novo, não dois itens (senão o
   relatório fragmenta a mesma assinatura em duas linhas).
-- **`recorrencia_fim` tem constraint `>= 1`.** Dividir série na 1ª ocorrência
-  (`indice-1 === 0`) cai em edição da regra inteira, não em divisão.
+- **`CHECK (recorrencia_fim IS NULL OR recorrencia_fim > 0)`.** Dividir série na
+  1ª ocorrência (`indice-1 === 0`) cai em edição da regra inteira, não em divisão.
+- **Campos condicionais são travados por CHECK no banco** — um INSERT que os
+  misture falha, não passa silenciosamente: `parcelas` só com
+  `repeticao='parcelar'` (e `> 1`, parcelar em 1 não existe); `recorrencia_fim`
+  e `assinatura=true` só com `repeticao='recorrente'`; transferência nunca
+  `'parcelar'`; `de_conta_id <> para_conta_id`; `dia_fechamento` e
+  `dia_pagamento` entre 1 e 31.
 - **Write sem `.select()` usa `return=minimal`** → um UPDATE bloqueado por RLS
   vira **no-op silencioso**. Se o resultado importa, peça o retorno.
 - **Régua de edição de série por nível (§4.3):** grandeza (valor, descrição,
@@ -145,7 +161,16 @@ casal. Não "corrija" isso sem conversar.
 
 ## Dívidas conhecidas
 
-- **Schema SQL fora do git** (acima). A maior.
+- **O nome do enum de `lancamentos.tipo` não está confirmado.** A introspecção
+  reportou só `USER-DEFINED` (enum sem DEFAULT não revela o tipo); o
+  `schema.sql` usa `lancamento_tipo` com base no `db.ts`. A query de extração já
+  cobre enums — a próxima rodada confirma.
+- **Índices redundantes:** `cartoes_ciclos_cartao_idx` duplica as colunas do
+  índice único ao lado, e `idx_cartoes_pagamentos_cartao` é prefixo do único.
+  Dá pra dropar os dois sem perda.
+- **Nomes de policy inconsistentes** entre tabelas (`auth full access`,
+  `cartoes_ciclos_all`, `cartoes_pagamentos_authenticated_all`,
+  `excecoes_serie_all_authenticated`). Cosmético.
 - **Spec parado na v0.10**, mas o código andou: arquivamento de cartão
   (`cartoes.arquivado_em`), a tabela `cartoes_ciclos` inteira (documentada só em
   comentário no código), o seletor de "dias antes" no fechamento, e a mudança de
