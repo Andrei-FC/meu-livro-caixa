@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Header, CardDeEntidade, ExtratoDoMes, FAB } from '../components';
+import { Header, CardDeEntidade, ExtratoDoMes, FAB, espacoParaFAB } from '../components';
 import {
   lancamentosNoMes,
   transferenciasNoMes,
@@ -188,8 +188,9 @@ export function ContaDrilldown({
           display: 'flex',
           flexDirection: 'column',
           gap: 'var(--space-lg)',
+          padding: 'var(--space-sm) var(--space-lg) 0',
           // Folga no fim para o FAB não cobrir a última linha do extrato.
-          padding: 'var(--space-sm) var(--space-lg) calc(var(--space-xl) + 72px)',
+          paddingBottom: espacoParaFAB(),
         }}
       >
         {/* Hero: os mesmos números do card da aba Contas, em card cheio. */}
@@ -233,7 +234,9 @@ export function ContaDrilldown({
         />
       </main>
 
-      <FAB onClick={onLancar} aria-label={`Novo lançamento em ${conta.nome}`} base="calc(var(--space-xl) + env(safe-area-inset-bottom))" />
+      {/* Sem BottomNav aqui: o FAB fica à MESMA folga da base que guarda da
+          nav na Home (§5.1), sobre a safe-area. */}
+      <FAB onClick={onLancar} aria-label={`Novo lançamento em ${conta.nome}`} />
     </div>
   );
 }

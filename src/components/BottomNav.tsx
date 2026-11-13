@@ -14,6 +14,15 @@ import { IconeNavLancamentos, IconeNavRelatorio, IconeNavCartoes, IconeNavCartei
 
 export type AbaHome = 'lancamentos' | 'cartoes' | 'contas' | 'relatorio';
 
+/**
+ * Altura da barra em px, SEM a safe-area (que ela acrescenta por padding).
+ * A barra não tem altura fixa — é conteúdo + `env(safe-area-inset-bottom)` —,
+ * então quem precisa sobrevoá-la (o FAB, o fim das listas) usa esta constante
+ * em vez de chutar. Medida: 49,3px; arredondado para cima.
+ * Mudou o conteúdo das abas? Remeça e atualize aqui.
+ */
+export const ALTURA_NAV = 50;
+
 const ABAS: {
   id: AbaHome;
   rotulo: string;

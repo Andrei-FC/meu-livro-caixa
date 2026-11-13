@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Header, CartaoHeroDrillDown, LinhaDeLancamento, CabecalhoDeDia, Botao, FAB, FazerPagamentoSheet } from '../components';
+import { Header, CartaoHeroDrillDown, LinhaDeLancamento, CabecalhoDeDia, Botao, FAB, espacoParaFAB, FazerPagamentoSheet } from '../components';
 import {
   ocorrenciasDoCiclo,
   realizadoDoCiclo,
@@ -36,6 +36,10 @@ import type { Cartao, Lancamento } from '../types/db';
  * O rótulo do header é sempre "Fatura de <mês de fechamento>" — identidade
  * estável do ciclo, independente da fase.
  */
+
+/** Altura do footer de "Fazer Pagamento" (px, sem safe-area): 12 de padding +
+ *  o botão + 24 de padding. O FAB o sobrevoa quando ele existe. */
+const ALTURA_FOOTER_PAGAMENTO = 88;
 
 const MESES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 const DIAS_SEMANA = [
@@ -193,10 +197,11 @@ export function CartaoFatura({
           display: 'flex',
           flexDirection: 'column',
           gap: 'var(--space-lg)',
-          // Espaço extra no fim para os botões flutuantes não cobrirem a última
-          // linha: o FAB sempre (56px + respiro) e, na fase fechada, também o
-          // footer de Fazer Pagamento (88px) que o FAB passa a sobrevoar.
-          padding: `var(--space-sm) var(--space-lg) ${fase === 'fechada' ? 'calc(var(--space-xl) + 160px)' : 'calc(var(--space-xl) + 72px)'}`,
+          padding: 'var(--space-sm) var(--space-lg) 0',
+          // Espaço no fim para os botões flutuantes não cobrirem a última linha:
+          // o FAB sempre e, na fase fechada, o footer de Fazer Pagamento embaixo
+          // dele.
+          paddingBottom: espacoParaFAB(fase === 'fechada' ? ALTURA_FOOTER_PAGAMENTO : 0),
         }}
       >
         {/* Hero (§5.3): mesmas informações do card da Carteira, layout próprio. */}
@@ -263,11 +268,7 @@ export function CartaoFatura({
       <FAB
         onClick={onLancar}
         aria-label={`Novo lançamento em ${cartao.nome}`}
-        base={
-          fase === 'fechada'
-            ? 'calc(var(--space-lg) + 88px + env(safe-area-inset-bottom))'
-            : 'calc(var(--space-xl) + env(safe-area-inset-bottom))'
-        }
+        sobrevoa={fase === 'fechada' ? ALTURA_FOOTER_PAGAMENTO : 0}
       />
 
       {/* Botão flutuante "Fazer Pagamento" — só na fase FECHADA (§5.3). Área

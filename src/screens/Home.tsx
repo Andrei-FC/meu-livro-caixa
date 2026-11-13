@@ -24,6 +24,8 @@ import {
 } from '../lib/recorrencia';
 import {
   BottomNav,
+  ALTURA_NAV,
+  espacoParaFAB,
   type AbaHome,
   CardDeResumo,
   CardDeEntidade,
@@ -746,7 +748,9 @@ export function Home() {
           display: 'flex',
           flexDirection: 'column',
           padding: 'var(--space-lg)',
-          paddingBottom: 'calc(96px + env(safe-area-inset-bottom))',
+          // Reserva o FAB + a BottomNav: rolando até o fim, a última linha
+          // fica acima do botão, não embaixo dele.
+          paddingBottom: espacoParaFAB(ALTURA_NAV),
         }}
       >
         {erro && !carregando && contas.length === 0 ? (
@@ -923,7 +927,7 @@ export function Home() {
 
       {/* FAB só na aba Lançamentos (§5.2): lançar é o gesto daquela tela; em
           Carteira/Relatório ele era ruído. */}
-      {aba === 'lancamentos' && <FAB onClick={() => setSheetAberto(true)} />}
+      {aba === 'lancamentos' && <FAB onClick={() => setSheetAberto(true)} sobrevoa={ALTURA_NAV} />}
 
       {/* Navegação principal fixa (§5.1) — 3 abas, alcance de polegar. */}
       <BottomNav ativa={aba} onMudar={setAba} />

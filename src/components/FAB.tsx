@@ -6,18 +6,38 @@ import { IconeAdd } from '../icons';
  * para criar conta/cartão/poupança.
  */
 
+/** Lado do botão (Figma 2006:34). */
+const LADO = 56;
+
+/**
+ * Folga do FAB em relação ao que estiver logo abaixo dele — a BottomNav, o
+ * footer de ação, ou a base da tela. É o X do ajuste: a MESMA distância em
+ * todas as telas, com ou sem menu. A safe-area entra sempre por cima disso,
+ * nunca no lugar dela.
+ */
+const FOLGA = 'var(--space-xl)';
+
+/**
+ * Espaço que o FAB reserva na base: a folga de baixo + o botão + a folga de
+ * cima. Use no `padding-bottom` da lista — sem isso o botão flutuante cobre a
+ * última linha quando se rola até o fim.
+ */
+export function espacoParaFAB(sobrevoa = 0): string {
+  return `calc(${FOLGA} + ${LADO}px + ${FOLGA} + ${sobrevoa}px + env(safe-area-inset-bottom))`;
+}
+
 type Props = {
   onClick: () => void;
   'aria-label'?: string;
   /**
-   * Distância da base. Default: acima do BottomNav da Home. Telas sem
-   * BottomNav (drill-down do cartão, §5.3) passam a sua — lá o que o FAB
-   * precisa limpar é o footer de "Fazer Pagamento", não a nav.
+   * Altura (px, sem safe-area) do que está embaixo do FAB e ele sobrevoa: a
+   * BottomNav na Home (`ALTURA_NAV`) ou o footer de Fazer Pagamento (§5.3).
+   * Ausente = nada embaixo, o FAB fica a uma FOLGA da base.
    */
-  base?: string;
+  sobrevoa?: number;
 };
 
-export function FAB({ onClick, 'aria-label': ariaLabel = 'Novo lançamento', base }: Props) {
+export function FAB({ onClick, 'aria-label': ariaLabel = 'Novo lançamento', sobrevoa = 0 }: Props) {
   return (
     <button
       type="button"
@@ -26,11 +46,11 @@ export function FAB({ onClick, 'aria-label': ariaLabel = 'Novo lançamento', bas
       style={{
         position: 'fixed',
         right: 'calc(var(--space-lg) + env(safe-area-inset-right))',
-        // Acima do BottomNav, com respiro maior para o botão não encostar na
-        // barra nem cobrir a última linha da lista.
-        bottom: base ?? 'calc(var(--space-xl) + 72px + env(safe-area-inset-bottom))',
-        width: 56,
-        height: 56,
+        // Uma folga acima do que vier embaixo (nav, footer ou a própria base),
+        // sempre por cima da safe-area do iOS.
+        bottom: `calc(${FOLGA} + ${sobrevoa}px + env(safe-area-inset-bottom))`,
+        width: LADO,
+        height: LADO,
         borderRadius: '50%',
         border: 'none',
         display: 'inline-flex',
