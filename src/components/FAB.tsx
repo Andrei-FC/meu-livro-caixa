@@ -35,14 +35,24 @@ type Props = {
    * Ausente = nada embaixo, o FAB fica a uma FOLGA da base.
    */
   sobrevoa?: number;
+  /**
+   * Tema da entidade dona da tela (§4.9): nos drill-downs o botão veste a cor
+   * do cartão/conta, porque ali o lançamento já tem dono — a cor diz, antes do
+   * sheet abrir, onde a compra vai cair. Na Home não há dono, e ele fica
+   * accent. Sem tema (entidade sem cor escolhida), também accent.
+   */
+  tema?: string | null;
 };
 
-export function FAB({ onClick, 'aria-label': ariaLabel = 'Novo lançamento', sobrevoa = 0 }: Props) {
+export function FAB({ onClick, 'aria-label': ariaLabel = 'Novo lançamento', sobrevoa = 0, tema }: Props) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={ariaLabel}
+      // data-card-theme resolve --theme-bg/--theme-text, o mesmo mecanismo dos
+      // cards e swatches (§4.9) — nada de cor crua aqui.
+      data-card-theme={tema ?? undefined}
       style={{
         position: 'fixed',
         right: 'calc(var(--space-lg) + env(safe-area-inset-right))',
@@ -56,8 +66,8 @@ export function FAB({ onClick, 'aria-label': ariaLabel = 'Novo lançamento', sob
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'var(--accent-default)',
-        color: 'var(--text-on-accent)',
+        background: tema ? 'var(--theme-bg)' : 'var(--accent-default)',
+        color: tema ? 'var(--theme-text)' : 'var(--text-on-accent)',
         boxShadow: '0 6px 16px rgba(0, 0, 0, 0.35)',
       }}
     >

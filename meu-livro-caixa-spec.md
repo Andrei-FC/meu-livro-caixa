@@ -1070,6 +1070,11 @@ relatório. O dado guarda apenas referências; o visual vive no design system.
 - **Ícone (`icone`):** uma **chave** de uma **biblioteca fixa** de logos de
   banco/bandeira (curada, restrita aos bancos do usuário). Não é upload de
   imagem livre — logo não há storage de arquivos a manter.
+- **O tema veste a tela inteira do drill-down, não só o card (v0.12).** Dentro do
+  drill-down de um cartão ou de uma conta, o **FAB assume a cor da entidade** —
+  ali o lançamento já tem dono, e a cor diz *antes* de abrir o sheet onde a
+  compra vai cair. Na Home o FAB é accent: não há dono. Entidade sem tema
+  escolhido também cai no accent.
 - **Mesmo dado, tratamento visual diferente por tipo:** conta e cartão usam o
   **mesmo** campo `tema`. *Como* o tema é aplicado é decisão de design (ex.:
   cartão pinta o card inteiro; conta pinta só a testeira). O spec só garante que

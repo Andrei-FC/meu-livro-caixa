@@ -269,6 +269,7 @@ export function CartaoFatura({
         onClick={onLancar}
         aria-label={`Novo lançamento em ${cartao.nome}`}
         sobrevoa={fase === 'fechada' ? ALTURA_FOOTER_PAGAMENTO : 0}
+        tema={cartao.tema}
       />
 
       {/* Botão flutuante "Fazer Pagamento" — só na fase FECHADA (§5.3). Área

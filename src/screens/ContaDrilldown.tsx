@@ -236,7 +236,7 @@ export function ContaDrilldown({
 
       {/* Sem BottomNav aqui: o FAB fica à MESMA folga da base que guarda da
           nav na Home (§5.1), sobre a safe-area. */}
-      <FAB onClick={onLancar} aria-label={`Novo lançamento em ${conta.nome}`} />
+      <FAB onClick={onLancar} aria-label={`Novo lançamento em ${conta.nome}`} tema={conta.tema} />
     </div>
   );
 }
