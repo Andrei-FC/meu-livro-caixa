@@ -12,33 +12,20 @@ import {
   entradasSaidasDoMes,
   faturaNoMes,
   faturaSaidaPorConta,
-  realizadoDoCiclo,
-  faseDoCiclo,
   statusCarteiraDoCartao,
   diaFaturaNoMes,
-  regimeDoCiclo,
   saldoAcumuladoPorConta,
   fluxoDoMes,
   saldoPorPoupanca,
   movimentacoesDaPoupanca,
   transferenciasNoMes,
-  parteData,
   type OcorrenciaLancamento,
   type OcorrenciaTransferencia,
-  type IndiceExcecoes,
-  type IndicePagamentos,
-  type IndiceCiclos,
 } from '../lib/recorrencia';
 import {
   BottomNav,
   type AbaHome,
   CardDeResumo,
-  CabecalhoDeDia,
-  SaldoDoDia,
-  LinhaDeLancamento,
-  LinhaDeFatura,
-  type FaseFatura,
-  LinhaDeTransferencia,
   CardDeEntidade,
   FAB,
   Header,
@@ -47,6 +34,7 @@ import {
   MenuDrawer,
   type DestinoMenu,
   LancarSheet,
+  ExtratoDoMes,
   BannerTemporario,
   type Aviso,
   type Selecao,
@@ -63,6 +51,7 @@ import { GerenciarCartoes } from './GerenciarCartoes';
 import { CriarEditarConta } from './CriarEditarConta';
 import { CriarEditarCartao } from './CriarEditarCartao';
 import { CartaoFatura } from './CartaoFatura';
+import { ContaDrilldown } from './ContaDrilldown';
 
 /** Home real (§5.1). Compõe só a biblioteca de componentes.
  *  Nova navegação (Figma "03 - App Screens 1.0", Home bottom nav): Header
@@ -73,11 +62,6 @@ import { CartaoFatura } from './CartaoFatura';
 const MESES = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
-];
-const MESES_CURTO = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-const DIAS_SEMANA = [
-  'Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira',
-  'Quinta-feira', 'Sexta-feira', 'Sábado',
 ];
 
 export function Home() {
@@ -122,7 +106,8 @@ export function Home() {
     | { tela: 'poupanca-edit'; poupanca: Conta | null }
     | { tela: 'conta'; conta: Conta | null }
     | { tela: 'cartao'; cartao: Cartao | null }
-    | { tela: 'drill-cartao'; cartao: Cartao; cicloInicial: number };
+    | { tela: 'drill-cartao'; cartao: Cartao; cicloInicial: number }
+    | { tela: 'drill-conta'; conta: Conta };
   const [pagina, setPagina] = useState<Pagina | null>(null);
 
   // Carrega tudo do Supabase. Robusto a rede intermitente (PWA/iOS): em falha
@@ -622,6 +607,60 @@ export function Home() {
     );
   }
 
+  if (pagina?.tela === 'drill-conta') {
+    return (
+      <>
+        <ContaDrilldown
+          conta={pagina.conta}
+          contas={contas}
+          cartoes={cartoes}
+          lancamentos={lancamentos}
+          transferencias={transferencias}
+          excecoes={indiceExcecoes}
+          pagamentos={indicePagamentos}
+          ciclos={indiceCiclos}
+          hoje={hoje}
+          mesInicial={{ ano, mes }}
+          onVoltar={() => setPagina(null)}
+          onEditar={(o) => { setPagina(null); setEmEdicao(o); }}
+          onApagarTransf={setTransfApagar}
+          onAbrirCartao={(k, cicloInicial) => setPagina({ tela: 'drill-cartao', cartao: k, cicloInicial })}
+          onLancar={() => setSheetAberto(true)}
+        />
+        {/* Lançar daqui já vem nesta conta (§5.2) — mesmo mecanismo do cartão. */}
+        <LancarSheet
+          aberto={sheetAberto}
+          contas={contas}
+          cartoes={cartoes}
+          historicoDescricoes={historicoDescricoes}
+          meioPadrao={{ kind: 'conta', conta: pagina.conta }}
+          onFechar={() => setSheetAberto(false)}
+          onSalvou={(a) => { carregar(); setAviso(a); }}
+        />
+        <BannerTemporario aviso={aviso} onFim={() => setAviso(null)} />
+        {/* Confirmação de apagar transferência — a mesma da Home, porque a
+            linha de transferência existe aqui também (§5.7). */}
+        {transfApagar && (
+          <ModalDeAlerta
+            tipo="confirmacao"
+            titulo="Apagar transferência?"
+            corpo={`A transferência de ${formatarBR(transfApagar.valor, { prefixo: true })} será removida. O dinheiro volta aos lugares de origem, como se nunca tivesse saído.`}
+            primaria={{
+              rotulo: 'Apagar',
+              onClick: async () => {
+                await supabase.from('transferencias').delete().eq('id', transfApagar.origemId);
+                setTransfApagar(null);
+                carregar();
+              },
+            }}
+            secundaria={{ rotulo: 'Cancelar', onClick: () => setTransfApagar(null) }}
+            onScrim={() => setTransfApagar(null)}
+          />
+        )}
+      </>
+    );
+  }
+
   if (pagina?.tela === 'cofre') {
     return (
       <Cofre
@@ -745,7 +784,7 @@ export function Home() {
         ) : (
           <>
             {aba === 'lancamentos' && (
-              <Lancamentos
+              <ExtratoDoMes
                 ano={ano}
                 mes={mes}
                 ocorrencias={ocorrenciasLista}
@@ -838,6 +877,7 @@ export function Home() {
                           rotuloNeg={rotuloSaidas}
                           entradas={porConta.get(c.id)?.entradas ?? 0}
                           saidas={porConta.get(c.id)?.saidas ?? 0}
+                          onAbrir={() => setPagina({ tela: 'drill-conta', conta: c })}
                         />
                       </div>
                     ))
@@ -933,170 +973,6 @@ export function Home() {
           onScrim={() => setTransfApagar(null)}
         />
       )}
-    </div>
-  );
-}
-
-/* ───────── Aba Lançamentos: grupos por dia ───────── */
-
-type ItemDia =
-  | { kind: 'lancamento'; o: OcorrenciaLancamento }
-  | { kind: 'fatura'; k: Cartao; cicloAbs: number; realizado: number; fase: FaseFatura }
-  | { kind: 'transferencia'; t: OcorrenciaTransferencia };
-
-function Lancamentos(props: {
-  ano: number;
-  mes: number;
-  ocorrencias: OcorrenciaLancamento[];
-  transferencias: OcorrenciaTransferencia[];
-  cartoes: Cartao[];
-  contaPorId: Map<string, Conta>;
-  /** Fatura que VENCE no mês exibido, por cartão (o que pesa no saldo, §4.4). */
-  faturaDoMes: Map<string, number>;
-  // Cru + índices: para posicionar a fatura no ciclo que REALMENTE cai neste mês
-  // quando há pagamento efetivo (§5.3) — a data paga pode mover a linha de mês
-  // e de dia, então o dia/realizado/fase são derivados do ciclo que aterrissa
-  // aqui, não do ciclo-padrão.
-  lancamentosRaw: Lancamento[];
-  excecoes: IndiceExcecoes;
-  pagamentos: IndicePagamentos;
-  ciclos: IndiceCiclos;
-  hoje: Date;
-  onEditar: (o: OcorrenciaLancamento) => void;
-  onApagarTransf: (t: OcorrenciaTransferencia) => void;
-  onAbrirCartao: (k: Cartao) => void;
-  saldoInicial: number;
-}) {
-  const { ano, mes, ocorrencias, transferencias, cartoes, contaPorId, faturaDoMes, lancamentosRaw, excecoes, pagamentos, ciclos, hoje, onEditar, onApagarTransf, onAbrirCartao, saldoInicial } = props;
-
-  // Agrupa por dia. A data de cada ocorrência já vem resolvida pelo motor
-  // (§4.1: âncora no dia + clamp). A fatura de cada cartão entra no DIA DO
-  // PAGAMENTO (fluxo de caixa, §4.8) e só nos meses em que uma fatura vence
-  // (faturaDoMes > 0). O valor que pesa é a fatura (max previsão/realizado, ou
-  // realizado se fechada) — fonte única do motor.
-  // Classifica uma transferência pelo tipo das contas (§4.5): destino poupança
-  // = depósito (debita); origem poupança = retirada (credita); senão neutra.
-  const classificar = (t: OcorrenciaTransferencia): { variante: 'neutra' | 'deposito' | 'retirada'; delta: number } => {
-    const destinoPoup = contaPorId.get(t.para_conta_id)?.tipo === 'poupanca';
-    const origemPoup = contaPorId.get(t.de_conta_id)?.tipo === 'poupanca';
-    if (destinoPoup && !origemPoup) return { variante: 'deposito', delta: -t.valor };
-    if (origemPoup && !destinoPoup) return { variante: 'retirada', delta: t.valor };
-    return { variante: 'neutra', delta: 0 };
-  };
-
-  const grupos = useMemo(() => {
-    const porDia = new Map<number, ItemDia[]>();
-    const doCartao = (id: string) => lancamentosRaw.filter((l) => l.cartao_id === id);
-    const faseMap = (f: string): FaseFatura => f as FaseFatura;
-    for (const o of ocorrencias) {
-      const [, , dia] = parteData(o.data);
-      (porDia.get(dia) ?? porDia.set(dia, []).get(dia)!).push({ kind: 'lancamento', o });
-    }
-    for (const t of transferencias) {
-      const [, , dia] = parteData(t.data);
-      (porDia.get(dia) ?? porDia.set(dia, []).get(dia)!).push({ kind: 'transferencia', t });
-    }
-    // Fatura: descobre o ciclo que REALMENTE cai neste mês (§5.3 — a data
-    // efetiva de pagamento pode ter movido a linha de ±1 mês, e o regime pode
-    // variar por ciclo). Fonte única: diaFaturaNoMes (motor). O dia, o realizado
-    // e a fase são derivados desse ciclo, não do ciclo-padrão.
-    const alvoAbs = ano * 12 + mes;
-    for (const k of cartoes) {
-      const peso = faturaDoMes.get(k.id) ?? 0;
-      if (peso <= 0) continue; // nenhuma fatura pesa neste mês para este cartão
-      const landed = diaFaturaNoMes(k, alvoAbs, pagamentos, ciclos);
-      if (landed == null) continue;
-      const { cicloAbs, dia } = landed;
-      const realizado = realizadoDoCiclo(doCartao(k.id), k, cicloAbs, hoje, excecoes, ciclos);
-      const fase = faseMap(faseDoCiclo(cicloAbs, k, hoje, ciclos));
-      const diaClamp = Math.min(Math.max(dia, 1), new Date(ano, mes + 1, 0).getDate());
-      (porDia.get(diaClamp) ?? porDia.set(diaClamp, []).get(diaClamp)!).push({ kind: 'fatura', k, cicloAbs, realizado, fase });
-    }
-    // Saldo acumulado dia a dia, partindo do herdado do mês (§4.7).
-    let acc = saldoInicial;
-    return [...porDia.keys()]
-      .sort((a, b) => a - b)
-      .map((dia) => {
-        const itens = porDia.get(dia)!;
-        for (const it of itens) {
-          if (it.kind === 'lancamento') acc += it.o.tipo === 'entrada' ? it.o.valor : -it.o.valor;
-          else if (it.kind === 'transferencia') acc += classificar(it.t).delta;
-          else acc -= faturaDoMes.get(it.k.id) ?? 0; // fatura sai da conta no pagamento
-        }
-        return { dia, itens, saldoAcumulado: acc };
-      });
-  }, [ocorrencias, transferencias, cartoes, faturaDoMes, saldoInicial, ano, mes, contaPorId, lancamentosRaw, excecoes, pagamentos, ciclos, hoje]);
-
-  if (grupos.length === 0) {
-    return (
-      <p className="type-caption" style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-xl) 0' }}>
-        Nada neste mês ainda. Toque em + para lançar.
-      </p>
-    );
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
-      {/* Ponto de partida do acumulado: o saldo herdado do mês anterior (§4.7).
-          Mesma linha do rodapé de dia — só o rótulo muda. */}
-      <SaldoDoDia rotulo="Mês anterior" saldo={saldoInicial} />
-
-      {grupos.map(({ dia, itens, saldoAcumulado }) => {
-        const d = new Date(ano, mes, dia);
-        return (
-          <div key={dia} style={{ display: 'flex', flexDirection: 'column' }}>
-            <CabecalhoDeDia data={`${dia} ${MESES_CURTO[mes]}`} diaSemana={DIAS_SEMANA[d.getDay()]} />
-
-            <div
-              style={{
-                borderRadius: 'var(--radius-lg)',
-                overflow: 'hidden',
-                background: 'var(--bg-surface)',
-                display: 'flex',
-                flexDirection: 'column',
-              }}
-            >
-              {itens.map((it, i) =>
-                it.kind === 'lancamento' ? (
-                  <LinhaDeLancamento
-                    key={it.o.id}
-                    tipo={it.o.tipo}
-                    descricao={it.o.descricao}
-                    valor={it.o.tipo === 'saida' ? -it.o.valor : it.o.valor}
-                    conta={(() => { const c = contaPorId.get(it.o.conta_id); return c ? { nome: c.nome, tema: c.tema } : undefined; })()}
-                    parcela={it.o.total != null ? { indice: it.o.indice, total: it.o.total } : undefined}
-                    recorrente={it.o.repeticao === 'recorrente'}
-                    onEditar={() => onEditar(it.o)}
-                  />
-                ) : it.kind === 'transferencia' ? (
-                  <LinhaDeTransferencia
-                    key={it.t.id}
-                    variante={classificar(it.t).variante}
-                    valor={it.t.valor}
-                    origem={(() => { const c = contaPorId.get(it.t.de_conta_id); return { nome: c?.nome ?? '—', tema: c?.tema }; })()}
-                    destino={(() => { const c = contaPorId.get(it.t.para_conta_id); return { nome: c?.nome ?? '—', tema: c?.tema }; })()}
-                    recorrente={it.t.serieId != null}
-                    onEditar={() => onApagarTransf(it.t)}
-                  />
-                ) : (
-                  <LinhaDeFatura
-                    key={`fat-${it.k.id}-${i}`}
-                    titulo={it.k.nome}
-                    tagTexto={`fecha dia ${regimeDoCiclo(it.k, it.cicloAbs, ciclos).dia_fechamento}`}
-                    tagTema={contaPorId.get(it.k.conta_id)?.tema}
-                    fase={it.fase}
-                    realizado={it.realizado}
-                    previsao={it.fase === 'fechada' ? null : it.k.previsao_mensal}
-                    onAbrir={() => onAbrirCartao(it.k)}
-                  />
-                ),
-              )}
-            </div>
-
-            <SaldoDoDia saldo={saldoAcumulado} />
-          </div>
-        );
-      })}
     </div>
   );
 }

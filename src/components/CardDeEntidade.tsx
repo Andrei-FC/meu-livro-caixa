@@ -31,6 +31,9 @@ type ContaProps = Base & {
    *  Previstas" (Item 2). Ausentes = "Entradas"/"Saídas". */
   rotuloPos?: string;
   rotuloNeg?: string;
+  /** Se presente, o card abre o drill-down da conta ao tocar (§5.6, v0.12) —
+   *  mesma porta que a poupança e o cartão já tinham. */
+  onAbrir?: () => void;
 };
 type PoupancaProps = Base & {
   tipo: 'poupanca';
@@ -97,6 +100,10 @@ export function CardDeEntidade(props: Props) {
 /** Conta, Poupança e Cofre: testeira + body. */
 function ComTesteira(props: ContaProps | PoupancaProps | CofreProps) {
   const { nome, valor, tema, tipo } = props;
+  // Rótulos: ausentes no card de Gerenciar Contas (nada muda lá), presentes no
+  // hero do drill-down da conta (§5.6), onde o mês navega e o número troca de
+  // significado — "Saldo Atual" vira "Saldo Final"/"Previsto" (Item 2).
+  const rotuloSaldo = tipo === 'cofre' ? undefined : props.rotuloSaldo;
   // Cofre usa accent fixo; Conta/Poupança usam o tema (ou elevated se sem tema).
   const testeiraBg =
     tipo === 'cofre'
@@ -125,14 +132,19 @@ function ComTesteira(props: ContaProps | PoupancaProps | CofreProps) {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)', padding: '14px var(--space-lg) var(--space-lg)' }}>
-        <span className="type-display" style={{ color: 'var(--text-primary)' }}>
-          {formatarBR(valor, { prefixo: true })}
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {rotuloSaldo && (
+            <span className="type-label" style={{ color: 'var(--text-muted)' }}>{rotuloSaldo}</span>
+          )}
+          <span className="type-display" style={{ color: 'var(--text-primary)' }}>
+            {formatarBR(valor, { prefixo: true })}
+          </span>
+        </div>
 
         {props.tipo === 'conta' && (
           <div style={{ display: 'flex', gap: 'var(--space-xl)' }}>
-            <Mini rotulo="Entradas" cor="var(--value-entrada)" texto={formatarBR(props.entradas, { sinal: '+' })} />
-            <Mini rotulo="Saídas" cor="var(--value-saida)" texto={formatarBR(-Math.abs(props.saidas))} />
+            <Mini rotulo={props.rotuloPos ?? 'Entradas'} cor="var(--value-entrada)" texto={formatarBR(props.entradas, { sinal: '+' })} />
+            <Mini rotulo={props.rotuloNeg ?? 'Saídas'} cor="var(--value-saida)" texto={formatarBR(-Math.abs(props.saidas))} />
           </div>
         )}
       </div>
@@ -148,7 +160,7 @@ function ComTesteira(props: ContaProps | PoupancaProps | CofreProps) {
 function EntidadeCompacta(props: ContaProps | PoupancaProps) {
   const { nome, valor, tema } = props;
   const poupanca = props.tipo === 'poupanca';
-  const onAbrir = poupanca ? props.onAbrir : undefined;
+  const onAbrir = props.onAbrir;
   const icone = poupanca ? props.icone : props.banco;
   // Poupança e conta usam bibliotecas de ícone distintas: poupança resolve pela
   // grade temática de objetivos (ICONES_POUPANCA, mesma do SlotIconePoupanca);

@@ -33,6 +33,26 @@
 >   senão a economia de um toque vira ida ao extrato pra conferir. Segue o
 >   princípio 5 ("ver, não controlar"): informa, não pergunta, **não tem
 >   desfazer** e não bloqueia nada. Vale para gasto, receita e transferência.
+> - **A conta-corrente ganha drill-down** (§5.6), irmão do drill-down do cartão:
+>   hero com os mesmos números do card da aba Contas + **extrato corrido por dia**
+>   + FAB já apontado para a conta. Fecha o ciclo: cartão, poupança e agora conta
+>   têm, cada um, uma porta para o seu extrato.
+>   - **Navega por MÊS, não por ciclo** — a única diferença real de mecanismo
+>     frente ao cartão. Ciclo é entidade do cartão (fecha, vence, vira fatura);
+>     conta-corrente tem mês-calendário, o eixo de toda a Home (§5.1). Inventar
+>     ciclo aqui criaria uma entidade que o domínio não tem.
+>   - **O extrato é o eixo de CAIXA da conta** (§4.8): lançamento de débito dela,
+>     transferência que a toca (nos dois sentidos) e a **fatura dos cartões
+>     pagos por ela**, no dia em que vence. Compra de cartão **não** aparece
+>     solta — seria dupla contagem, e no mês errado. Com isso o acumulado do
+>     extrato **fecha com o saldo do hero**: é a §4.7 lida por conta.
+>   - **Na visão de uma conta, transferência entre correntes deixa de ser
+>     neutra**: ganha sinal (+ chegou / − saiu). Neutra é o efeito no caixa do
+>     *casal* (§4.5); no extrato *da conta*, um número sem sinal mudaria o saldo
+>     do dia sem explicar por quê.
+>   - A lista por dia virou o componente **`ExtratoDoMes`** (era a função
+>     `Lancamentos` dentro da Home): a aba Lançamentos e o drill-down da conta
+>     usam a MESMA lista, e não duas que precisam ser mantidas em paralelo.
 
 > **Mudanças na v0.11** (sessão de documentação — reconcilia o spec com o código,
 > que andou cinco commits além da v0.10; nenhuma decisão nova de produto, exceto
@@ -1401,6 +1421,15 @@ mensal da Home.
     rótulo muda junto. Pelo mesmo motivo, **Entradas/Saídas viram "Previstas"** em
     meses futuros. O número nunca mente sobre o que é: fato ou projeção
     (princípio 3).
+  - **Tocar no card abre o drill-down da conta (v0.12)** — página própria, como
+    cartão (§5.3) e poupança (§5.4) já tinham. **Header chuld com navegação de
+    mês** (‹ nov 2026 ›, local à tela, começa no mês em que a Home estava),
+    **hero** = o card cheio da conta com os mesmos três números (saldo + entradas
+    /saídas, rótulos acompanhando o mês), **extrato corrido por dia** com o saldo
+    ao pé de cada dia e o "Mês anterior" no topo (§4.7), e **FAB** que abre o
+    Lançar nesta conta (§5.2). Tocar na linha de fatura abre o cartão no ciclo
+    que vence ali (o mesmo "clique vivo" da §5.3). O que entra no extrato e por
+    que a transferência ganha sinal: ver o changelog da v0.12.
 - **Cofre:** cards compactos de poupança, **mesmo layout** da conta, legendas
   próprias — **Guardado** (saldo, foto do presente) / **Depositos** / **Retiradas**
   (do mês exibido). **Sem totalização** aqui (o "TOTAL GUARDADO" continua só na

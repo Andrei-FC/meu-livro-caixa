@@ -23,6 +23,7 @@ export { Relatorio } from './Relatorio';
 export { GraficoFluxoDoMes } from './GraficoFluxoDoMes';
 export { CardDeEntidade } from './CardDeEntidade';
 export { FAB } from './FAB';
+export { ExtratoDoMes } from './ExtratoDoMes';
 export { BannerTemporario } from './BannerTemporario';
 export type { Aviso } from './BannerTemporario';
 export { BottomNav } from './BottomNav';

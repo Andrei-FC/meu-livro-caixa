@@ -31,6 +31,13 @@ type Props = {
   destino: Ponta;
   /** Faz parte de uma transferência recorrente → ícone de coleção (§5.7). */
   recorrente?: boolean;
+  /**
+   * Sobrepõe o SINAL do valor, mantendo título e ícone da variante. Usado pelo
+   * extrato de UMA conta (§5.6): ali o que importa é o efeito no saldo DELA —
+   * corrente→corrente deixa de ser neutra e vira + ou −, senão o extrato mostra
+   * um número sem sinal mudando o saldo do dia. No extrato do casal, ausente.
+   */
+  sinal?: '+' | '-';
   onEditar: () => void;
 };
 
@@ -46,12 +53,16 @@ function LeadIcone({ variante }: { variante: Variante }) {
   return <IconeSwapHorizontal tamanho={18} />;
 }
 
-export function LinhaDeTransferencia({ variante, valor, origem, destino, recorrente, onEditar }: Props) {
+export function LinhaDeTransferencia({ variante, valor, origem, destino, recorrente, sinal, onEditar }: Props) {
   // Valor: neutra sem sinal (text/primary via Valor tipo 'neutro'); depósito
-  // debita (saida, −); retirada credita (entrada, +). §4.5.
-  const valorTipo = variante === 'deposito' ? 'saida' : variante === 'retirada' ? 'entrada' : 'neutro';
-  const valorNum =
-    variante === 'deposito' ? -Math.abs(valor) : variante === 'retirada' ? Math.abs(valor) : Math.abs(valor);
+  // debita (saida, −); retirada credita (entrada, +). §4.5. Com `sinal`, quem
+  // manda é o ponto de vista da conta (§5.6) — título e ícone não mudam.
+  const valorTipo = sinal
+    ? (sinal === '+' ? 'entrada' : 'saida')
+    : variante === 'deposito' ? 'saida' : variante === 'retirada' ? 'entrada' : 'neutro';
+  const valorNum = sinal
+    ? (sinal === '+' ? Math.abs(valor) : -Math.abs(valor))
+    : variante === 'deposito' ? -Math.abs(valor) : variante === 'retirada' ? Math.abs(valor) : Math.abs(valor);
 
   return (
     <div
