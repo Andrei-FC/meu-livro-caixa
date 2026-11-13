@@ -5,7 +5,7 @@ Supabase. Mobile-first (iPhone), interface em português.
 
 ## A fonte de verdade é o spec
 
-**`meu-livro-caixa-spec.md`** (v0.11) é o contrato do produto: visão, modelo de
+**`meu-livro-caixa-spec.md`** (v0.12) é o contrato do produto: visão, modelo de
 dados, regras de negócio, telas. O código referencia suas seções nos comentários
 (`§4.1`, `§4.3`...). **Leia a seção relevante antes de mexer na regra
 correspondente** — e, se a mudança revogar uma decisão, registre a revogação no

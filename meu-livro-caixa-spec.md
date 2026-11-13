@@ -5,7 +5,34 @@
 > desenhar no Figma, contrato do que o banco (Supabase) precisa suportar, e
 > spec de implementação.
 
-**Versão:** 0.11 (rascunho de decisões) · **Última atualização:** nov/2026
+**Versão:** 0.12 (rascunho de decisões) · **Última atualização:** nov/2026
+
+> **Mudanças na v0.12** (sessão de implementação — defaults do lançar):
+>
+> - **O default do campo Conta passa a ser o MEIO MAIS USADO, não a conta
+>   principal** (§5.2, passo 5). **Revoga** "default na principal" da v0.6.
+>   Conta e cartão disputam o mesmo ranking — "onde saiu o gasto" é uma pergunta
+>   só, e quem paga quase tudo no cartão pagava o preço de dois toques a cada
+>   lançamento. A régua é a do autocomplete de descrição (§4.6): **frequência,
+>   desempate pela recência**, e **só as saídas votam** (receita cai quase sempre
+>   na mesma conta e distorceria o default do caso comum). Arquivados não
+>   concorrem; sem histórico, cai na conta principal como antes.
+> - **O drill-down do cartão ganha FAB de lançar** (§5.3). **Revoga** o "sem FAB"
+>   da v0.6. Quem está olhando a fatura é quem acabou de gastar naquele cartão;
+>   mandar voltar à Home para lançar é atrito no fluxo sagrado (princípio 1). O
+>   sheet abre com **aquele cartão já selecionado** — o mesmo mecanismo do
+>   default acima, só que a sugestão vem do contexto em vez do histórico.
+>   **Continua sendo só um default**: o seletor de conta/cartão segue inteiro,
+>   e lançar noutro meio dali é um toque. O FAB
+>   aparece em **qualquer fase e em ciclo passado**: a data manda (princípio 2),
+>   e a compra atrasada é lançada pela data dela, não pelo ciclo que está aberto.
+> - **Banner temporário de confirmação depois de lançar** (§5.2, componente novo
+>   `BannerTemporario`). Diz **o quê, quanto e onde caiu**, e some sozinho em
+>   ~3,6s. É a contrapartida do default esperto: o campo Conta passa a vir
+>   preenchido sem o usuário olhar, então o app precisa **provar** onde lançou —
+>   senão a economia de um toque vira ida ao extrato pra conferir. Segue o
+>   princípio 5 ("ver, não controlar"): informa, não pergunta, **não tem
+>   desfazer** e não bloqueia nada. Vale para gasto, receita e transferência.
 
 > **Mudanças na v0.11** (sessão de documentação — reconcilia o spec com o código,
 > que andou cinco commits além da v0.10; nenhuma decisão nova de produto, exceto
@@ -1150,7 +1177,11 @@ Hierarquia do topo (essencial, sem rolar) para o fim (opcional, rolando):
    Em **Transferência**, o sheet muda de estado (ver abaixo).
 3. **Descrição/categoria** — com autocomplete inteligente (§4.6).
 4. **Data** — default hoje.
-5. **Conta** — default na principal; aqui também se indica se caiu num **cartão**.
+5. **Conta** — default no **meio mais usado** (conta ou cartão, v0.12 — revoga
+   "default na principal"): frequência + recência sobre as saídas, mesma régua
+   do §4.6; sem histórico, a principal. Aqui também se indica se caiu num
+   **cartão**. Aberto a partir do drill-down de um cartão (§5.3), o default é
+   **aquele cartão**.
    Contas **arquivadas** não aparecem no seletor (§4.10).
    — *daqui para baixo, opcional, exige rolar* —
 6. **Como se repete:** à vista (default) · parcelar em Nx · recorrente (X vezes
@@ -1161,6 +1192,11 @@ Hierarquia do topo (essencial, sem rolar) para o fim (opcional, rolando):
    assinaturas do relatório; não muda nada no cálculo.
 7. **Nota livre** — text area, no fundo.
 8. **Salvar** — flutuante.
+9. **Banner de confirmação** (v0.12) — depois de gravar, um banner temporário no
+   topo diz **descrição · onde caiu · valor** e some sozinho. Contrapartida do
+   default do passo 5: se o app escolhe a conta/cartão por você, ele mostra a
+   escolha que fez. Sem desfazer (princípio 5) — para corrigir, o lançamento
+   está ali na lista, a um toque (§5.7). Toque no banner fecha antes da hora.
 
 Meta de design: nos 5 primeiros campos resolve-se ~90% dos lançamentos sem
 rolar. Defaults espertos = menos toques. O checkbox de assinatura mora no
@@ -1179,8 +1215,9 @@ com um lado já fixado (e também trazem o campo Data). O efeito no saldo segue
 
 ### 5.3 Cartão (drill-down)
 
-Página própria (Header chuld + conteúdo), sem FAB. Abre ao tocar no card do
-cartão (aba Cartões, §5.6) ou na Linha de fatura da Home (§4.8).
+Página própria (Header chuld + conteúdo), **com FAB de lançar** (v0.12 — revoga
+o "sem FAB"). Abre ao tocar no card do cartão (aba Cartões, §5.6) ou na Linha de
+fatura da Home (§4.8).
 
 - **Navega por CICLO, não por mês (v0.9 — revoga a v0.6).** O seletor do header é
   **"Fatura de \<mês de fechamento\>"** — o mês de fechamento é a identidade
@@ -1207,6 +1244,12 @@ cartão (aba Cartões, §5.6) ou na Linha de fatura da Home (§4.8).
   da linha** (selo "3/12", ícone de coleção), não como seção. Sem subtotais por
   grupo — o total do ciclo já vive no hero. *(v0.10 — revoga a divisão em três
   grupos COMPRAS DO CICLO · PARCELAS · ASSINATURAS.)*
+- **FAB de lançar** (v0.12): abre o mesmo sheet do §5.2 com **este cartão já
+  selecionado** — o contexto responde "onde saiu o gasto" antes de perguntar,
+  mas só como default: trocar de conta/cartão ali continua valendo.
+  Visível em qualquer fase e em qualquer ciclo, inclusive passado: a data do
+  lançamento é que decide em qual ciclo ele cai (§4.8), não o ciclo na tela.
+  Quando o footer de Fazer Pagamento existe, o FAB o sobrevoa.
 - **Fazer Pagamento** (footer): disponível quando o ciclo olhado é a
   fechada-a-pagar (§4.4); registra o pagamento efetivo em `cartoes_pagamentos`.
 

@@ -17,6 +17,7 @@ import {
   type ModoLancamento,
   type RepeteLancamento,
 } from './_camposLancamento';
+import type { Aviso } from './BannerTemporario';
 import { IconeClose } from '../icons';
 import { formatarBR } from '../lib/formato';
 import { supabase, comTimeout } from '../lib/supabase';
@@ -42,8 +43,18 @@ type Props = {
   /** Descrições já usadas, para o autocomplete (§4.6). */
   historicoDescricoes: string[];
   onFechar: () => void;
-  /** Chamado após gravar com sucesso — a Home recarrega os dados. */
-  onSalvou: () => void;
+  /**
+   * Chamado após gravar com sucesso — a Home recarrega os dados e mostra o
+   * banner de confirmação (§5.2): o que foi lançado, quanto e onde caiu.
+   */
+  onSalvou: (aviso: Aviso) => void;
+  /**
+   * Meio de pagamento já selecionado ao abrir (§5.2, passo 5). A Home passa o
+   * MAIS USADO (conta ou cartão, tanto faz); o drill-down do cartão (§5.3)
+   * passa o cartão que está sendo olhado. Ausente/null = cai na conta
+   * principal, como antes. Vale para gasto/receita; a transferência ignora.
+   */
+  meioPadrao?: Selecao | null;
   /**
    * Modo transferência FIXO (§5.4): usado por Depositar/Retirar da poupança.
    * Trava o sheet em transferência (sem toggle Saída/Entrada), fixa a poupança
@@ -70,6 +81,7 @@ export function LancarSheet({
   historicoDescricoes,
   onFechar,
   onSalvou,
+  meioPadrao,
   transferenciaFixa,
 }: Props) {
   // ── Estado do formulário ──
@@ -126,8 +138,10 @@ export function LancarSheet({
     setRecVezes(12);
     setAssinatura(false);
     setNota('');
-    setContaSel(null);
-    setCartaoSel(null);
+    // Meio de pagamento pré-selecionado (§5.2): o mais usado, ou o cartão do
+    // drill-down. Sem ele, contaEfetiva cai na conta principal.
+    setContaSel(meioPadrao?.kind === 'conta' ? meioPadrao.conta : null);
+    setCartaoSel(meioPadrao?.kind === 'cartao' ? meioPadrao.cartao : null);
     // Em transferência fixa, fixa o lado da poupança; o outro lado o usuário escolhe.
     if (transferenciaFixa) {
       const { poupanca, direcao } = transferenciaFixa;
@@ -175,6 +189,9 @@ export function LancarSheet({
   async function salvar() {
     setErro(null);
     setSalvando(true);
+    // O aviso é montado AQUI, antes do resetar() limpar os campos — depois do
+    // reset não há mais de onde tirar conta, cartão ou descrição.
+    let aviso: Aviso;
     try {
       if (ehTransferencia) {
         const payload = {
@@ -189,6 +206,17 @@ export function LancarSheet({
         };
         const { error } = await comTimeout(supabase.from('transferencias').insert(payload));
         if (error) throw error;
+        // Transferência é neutra no saldo (§4.5): sem sinal, swatch do destino
+        // (é para onde o dinheiro foi).
+        aviso = {
+          titulo: descricao.trim() || 'Transferência',
+          valor,
+          variante: 'neutro',
+          meio: `${origemSel!.nome} → ${destinoSel!.nome}`,
+          tema: destinoSel!.tema,
+          icone: destinoSel!.icone,
+          ehPoupanca: destinoSel!.tipo === 'poupanca',
+        };
       } else {
         const payload = {
           tipo: modo as LancamentoTipo,
@@ -208,9 +236,20 @@ export function LancarSheet({
         };
         const { error } = await comTimeout(supabase.from('lancamentos').insert(payload));
         if (error) throw error;
+        // Onde caiu: o cartão, se foi no cartão; senão a conta efetiva (que
+        // pode ser a padrão, nunca tocada pelo usuário — daí o banner).
+        const meio = cartaoSel ?? contaEfetiva;
+        aviso = {
+          titulo: descricao.trim(),
+          valor,
+          variante: modo === 'entrada' ? 'entrada' : 'saida',
+          meio: meio?.nome ?? '—',
+          tema: meio?.tema ?? null,
+          icone: cartaoSel ? cartaoSel.banco : contaEfetiva?.icone ?? null,
+        };
       }
       resetar();
-      onSalvou();
+      onSalvou(aviso);
       onFechar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro ao salvar.');

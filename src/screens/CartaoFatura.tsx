@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Header, CartaoHeroDrillDown, LinhaDeLancamento, CabecalhoDeDia, Botao, FazerPagamentoSheet } from '../components';
+import { Header, CartaoHeroDrillDown, LinhaDeLancamento, CabecalhoDeDia, Botao, FAB, FazerPagamentoSheet } from '../components';
 import {
   ocorrenciasDoCiclo,
   realizadoDoCiclo,
@@ -17,7 +17,10 @@ import type { Cartao, Lancamento } from '../types/db';
 /**
  * Cartão — Fatura (drill-down) — §5.3.
  * Aberta ao tocar no card do cartão na Carteira, ou na Linha de fatura da Home.
- * Página própria (Header chuld + conteúdo), sem FAB.
+ * Página própria (Header chuld + conteúdo), COM FAB de lançar (v0.12 — revoga
+ * o "sem FAB" da v0.6): quem está olhando a fatura é quem acabou de gastar no
+ * cartão, e mandar o usuário voltar à Home para lançar é atrito no fluxo
+ * sagrado (princípio 1). O FAB abre o Lançar com ESTE cartão já selecionado.
  *
  * Estrutura:
  *  1. Header chuld: voltar + nome do cartão + seletor de CICLO (‹ Fatura de mmm ›).
@@ -71,6 +74,8 @@ type Props = {
   onEditar: (o: OcorrenciaLancamento) => void;
   /** Grava a data efetiva de pagamento do ciclo (§5.3). A Home persiste e recarrega. */
   onPagar: (cicloAbs: number, dataISO: string) => void;
+  /** Abre o Lançar com este cartão pré-selecionado (§5.3). A Home monta o sheet. */
+  onLancar: () => void;
 };
 
 export function CartaoFatura({
@@ -84,6 +89,7 @@ export function CartaoFatura({
   onVoltar,
   onEditar,
   onPagar,
+  onLancar,
 }: Props) {
   // Ciclo exibido — começa no ciclo que a coisa clicada representa; navegável
   // ciclo-a-ciclo (§5.3). Não navega mais por mês: fatura é ciclo, não mês.
@@ -187,8 +193,10 @@ export function CartaoFatura({
           display: 'flex',
           flexDirection: 'column',
           gap: 'var(--space-lg)',
-          // Espaço extra no fim para a área do botão flutuante não cobrir a última linha.
-          padding: `var(--space-sm) var(--space-lg) ${fase === 'fechada' ? 'calc(var(--space-xl) + 88px)' : 'var(--space-xl)'}`,
+          // Espaço extra no fim para os botões flutuantes não cobrirem a última
+          // linha: o FAB sempre (56px + respiro) e, na fase fechada, também o
+          // footer de Fazer Pagamento (88px) que o FAB passa a sobrevoar.
+          padding: `var(--space-sm) var(--space-lg) ${fase === 'fechada' ? 'calc(var(--space-xl) + 160px)' : 'calc(var(--space-xl) + 72px)'}`,
         }}
       >
         {/* Hero (§5.3): mesmas informações do card da Carteira, layout próprio. */}
@@ -248,6 +256,19 @@ export function CartaoFatura({
           </div>
         )}
       </main>
+
+      {/* FAB de lançar (§5.3): sempre visível, inclusive em ciclo fechado ou
+          passado — a data manda (princípio 2), e uma compra pode ser lançada
+          depois. Sobe acima do footer de pagamento quando ele existe. */}
+      <FAB
+        onClick={onLancar}
+        aria-label={`Novo lançamento em ${cartao.nome}`}
+        base={
+          fase === 'fechada'
+            ? 'calc(var(--space-lg) + 88px + env(safe-area-inset-bottom))'
+            : 'calc(var(--space-xl) + env(safe-area-inset-bottom))'
+        }
+      />
 
       {/* Botão flutuante "Fazer Pagamento" — só na fase FECHADA (§5.3). Área
           ancorada na base, com fundo/borda como o Footer do Figma. */}

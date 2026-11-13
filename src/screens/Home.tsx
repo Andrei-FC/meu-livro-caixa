@@ -47,6 +47,9 @@ import {
   MenuDrawer,
   type DestinoMenu,
   LancarSheet,
+  BannerTemporario,
+  type Aviso,
+  type Selecao,
   EditarSheet,
   ModalDeAlerta,
   Relatorio,
@@ -96,6 +99,9 @@ export function Home() {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [sheetAberto, setSheetAberto] = useState(false);
+  // Banner de confirmação do último lançamento (§5.2) — some sozinho. null =
+  // nada na tela. Vive na Home porque sobrevive ao fechamento do sheet.
+  const [aviso, setAviso] = useState<Aviso | null>(null);
   const [menuAberto, setMenuAberto] = useState(false);
   const [emEdicao, setEmEdicao] = useState<OcorrenciaLancamento | null>(null);
   // Sheet de depósito/retirada da poupança (§5.4): reusa o LancarSheet em modo
@@ -200,6 +206,42 @@ export function Home() {
       .sort((a, b) => (b.usos - a.usos) || (a.recente < b.recente ? 1 : a.recente > b.recente ? -1 : 0))
       .map((e) => e.rotulo);
   }, [lancamentos]);
+
+  // Meio de pagamento mais usado (§5.2, passo 5) — o default do seletor de
+  // Conta no Lançar. Mesma régua do autocomplete (§4.6): FREQUÊNCIA, desempate
+  // pela RECÊNCIA. Conta e cartão disputam no mesmo ranking ("de onde saiu o
+  // gasto" é uma pergunta só), e só as SAÍDAS votam — receita quase sempre cai
+  // na mesma conta e distorceria o default do caso comum.
+  // Cartão manda sobre conta na mesma linha: um gasto no cartão também carrega
+  // conta_id (a conta pagadora), mas o meio é o cartão.
+  // Só entram contas/cartões vivos: arquivados já não vêm do carregar().
+  const meioMaisUsado = useMemo<Selecao | null>(() => {
+    const agg = new Map<string, { usos: number; recente: string }>();
+    for (const l of lancamentos) {
+      if (l.tipo !== 'saida') continue;
+      const chave = l.cartao_id ? `k:${l.cartao_id}` : l.conta_id ? `c:${l.conta_id}` : null;
+      if (!chave) continue;
+      const atual = agg.get(chave);
+      if (!atual) agg.set(chave, { usos: 1, recente: l.criado_em });
+      else {
+        atual.usos += 1;
+        if (l.criado_em > atual.recente) atual.recente = l.criado_em;
+      }
+    }
+    const ranking = [...agg.entries()]
+      .sort((a, b) => (b[1].usos - a[1].usos) || (a[1].recente < b[1].recente ? 1 : a[1].recente > b[1].recente ? -1 : 0));
+    for (const [chave] of ranking) {
+      const id = chave.slice(2);
+      if (chave.startsWith('k:')) {
+        const k = cartoes.find((x) => x.id === id);
+        if (k) return { kind: 'cartao', cartao: k };
+      } else {
+        const c = contas.find((x) => x.id === id && x.tipo === 'corrente');
+        if (c) return { kind: 'conta', conta: c };
+      }
+    }
+    return null; // sem histórico: o sheet cai na conta principal
+  }, [lancamentos, contas, cartoes]);
 
   // Ocorrências do mês exibido, materializadas a partir das regras (§4.1).
   // O motor expande parcelas/recorrências; o passado e o futuro (até o
@@ -548,18 +590,35 @@ export function Home() {
   }
   if (pagina?.tela === 'drill-cartao') {
     return (
-      <CartaoFatura
-        cartao={pagina.cartao}
-        lancamentos={lancamentos}
-        excecoes={indiceExcecoes}
-        pagamentos={indicePagamentos}
-        ciclos={indiceCiclos}
-        hoje={hoje}
-        cicloInicial={pagina.cicloInicial}
-        onVoltar={() => setPagina(null)}
-        onEditar={(o) => { setPagina(null); setEmEdicao(o); }}
-        onPagar={(cicloAbs, dataISO) => registrarPagamento(pagina.cartao, cicloAbs, dataISO)}
-      />
+      <>
+        <CartaoFatura
+          cartao={pagina.cartao}
+          lancamentos={lancamentos}
+          excecoes={indiceExcecoes}
+          pagamentos={indicePagamentos}
+          ciclos={indiceCiclos}
+          hoje={hoje}
+          cicloInicial={pagina.cicloInicial}
+          onVoltar={() => setPagina(null)}
+          onEditar={(o) => { setPagina(null); setEmEdicao(o); }}
+          onPagar={(cicloAbs, dataISO) => registrarPagamento(pagina.cartao, cicloAbs, dataISO)}
+          onLancar={() => setSheetAberto(true)}
+        />
+        {/* Lançar a partir do drill-down (§5.3): mesmo sheet da Home, com o
+            cartão que está sendo olhado já selecionado — quem está aqui já
+            disse em qual cartão gastou. Só pré-seleção: o seletor continua
+            aberto, dá pra lançar noutro cartão ou numa conta daqui mesmo. */}
+        <LancarSheet
+          aberto={sheetAberto}
+          contas={contas}
+          cartoes={cartoes}
+          historicoDescricoes={historicoDescricoes}
+          meioPadrao={{ kind: 'cartao', cartao: pagina.cartao }}
+          onFechar={() => setSheetAberto(false)}
+          onSalvou={(a) => { carregar(); setAviso(a); }}
+        />
+        <BannerTemporario aviso={aviso} onFim={() => setAviso(null)} />
+      </>
     );
   }
 
@@ -594,7 +653,7 @@ export function Home() {
           cartoes={cartoes}
           historicoDescricoes={historicoDescricoes}
           onFechar={() => setTransfFixa(null)}
-          onSalvou={() => { carregar(); }}
+          onSalvou={(a) => { carregar(); setAviso(a); }}
           transferenciaFixa={
             transfFixa
               ? {
@@ -605,6 +664,7 @@ export function Home() {
               : undefined
           }
         />
+        <BannerTemporario aviso={aviso} onFim={() => setAviso(null)} />
       </>
     );
   }
@@ -833,9 +893,15 @@ export function Home() {
         contas={contas}
         cartoes={cartoes}
         historicoDescricoes={historicoDescricoes}
+        meioPadrao={meioMaisUsado}
         onFechar={() => setSheetAberto(false)}
-        onSalvou={() => { carregar(); }}
+        onSalvou={(a) => { carregar(); setAviso(a); }}
       />
+
+      {/* Banner do último lançamento (§5.2): o default esperto do meio de
+          pagamento preenche o campo Conta sem o usuário olhar — o banner é a
+          prova de onde caiu. Some sozinho. */}
+      <BannerTemporario aviso={aviso} onFim={() => setAviso(null)} />
 
       <EditarSheet
         aberto={emEdicao !== null}

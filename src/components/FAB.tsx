@@ -9,9 +9,15 @@ import { IconeAdd } from '../icons';
 type Props = {
   onClick: () => void;
   'aria-label'?: string;
+  /**
+   * Distância da base. Default: acima do BottomNav da Home. Telas sem
+   * BottomNav (drill-down do cartão, §5.3) passam a sua — lá o que o FAB
+   * precisa limpar é o footer de "Fazer Pagamento", não a nav.
+   */
+  base?: string;
 };
 
-export function FAB({ onClick, 'aria-label': ariaLabel = 'Novo lançamento' }: Props) {
+export function FAB({ onClick, 'aria-label': ariaLabel = 'Novo lançamento', base }: Props) {
   return (
     <button
       type="button"
@@ -22,7 +28,7 @@ export function FAB({ onClick, 'aria-label': ariaLabel = 'Novo lançamento' }: P
         right: 'calc(var(--space-lg) + env(safe-area-inset-right))',
         // Acima do BottomNav, com respiro maior para o botão não encostar na
         // barra nem cobrir a última linha da lista.
-        bottom: 'calc(var(--space-xl) + 72px + env(safe-area-inset-bottom))',
+        bottom: base ?? 'calc(var(--space-xl) + 72px + env(safe-area-inset-bottom))',
         width: 56,
         height: 56,
         borderRadius: '50%',
