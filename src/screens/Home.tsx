@@ -819,20 +819,6 @@ export function Home() {
             )}
           </>
         )}
-
-        {/* Rodapé escondido: só aparece ao rolar até a base (o min-height do
-            main garante a folga de rolagem). Easter egg discreto. */}
-        <p
-          className="type-caption"
-          style={{
-            marginTop: 'auto',
-            paddingTop: 'var(--space-xl)',
-            textAlign: 'center',
-            color: 'var(--text-muted)',
-          }}
-        >
-          nenhum lançamento escondido aqui :)
-        </p>
       </main>
 
       {/* FAB só na aba Lançamentos (§5.2): lançar é o gesto daquela tela; em
@@ -985,6 +971,10 @@ function Lancamentos(props: {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
+      {/* Ponto de partida do acumulado: o saldo herdado do mês anterior (§4.7).
+          Mesma linha do rodapé de dia — só o rótulo muda. */}
+      <SaldoDoDia rotulo="Mês anterior" saldo={saldoInicial} />
+
       {grupos.map(({ dia, itens, saldoAcumulado }) => {
         const d = new Date(ano, mes, dia);
         return (
