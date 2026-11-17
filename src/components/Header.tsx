@@ -76,6 +76,19 @@ type ChuldProps = {
   mesAno?: string;
   onAnterior?: () => void;
   onProximo?: () => void;
+  /**
+   * COLAPSO DO HERO (§5.3/§5.6). Quando o hero da entidade sai da tela por
+   * baixo do header, a identidade não pode sumir junto — ela sobe para cá: o
+   * header se PINTA com a cor da entidade (§4.9) e mostra ícone + nome. É o
+   * padrão "título grande vira título pequeno" dos apps de iOS, com a cor
+   * fazendo o papel de dizer *onde* você está. Falso = header normal
+   * (translúcido sobre a página).
+   */
+  colapsado?: boolean;
+  /** Tema da entidade (§4.9). Sem tema, o header colapsado usa o accent. */
+  tema?: string | null;
+  /** Ícone da entidade (logo do banco, ícone de poupança) ao lado do nome. */
+  icone?: React.ReactNode;
 };
 
 type Props = DefaultProps | ChuldProps;
@@ -175,10 +188,69 @@ function HeaderDefault({ mesAno, onMenu, onAnterior, onProximo, innerRef }: Defa
   );
 }
 
-function HeaderChuld({ titulo, onVoltar, fechar = false, fab = false, onFab, mostrarData = false, mesAno, onAnterior, onProximo, innerRef }: ChuldProps & { innerRef: React.Ref<HTMLElement> }) {
+/** Duração do cross-fade do colapso — curto, é reação à rolagem, não entrada. */
+const TRANSICAO = '180ms ease';
+
+function HeaderChuld({ titulo, onVoltar, fechar = false, fab = false, onFab, mostrarData = false, mesAno, onAnterior, onProximo, colapsado = false, tema, icone, innerRef }: ChuldProps & { innerRef: React.Ref<HTMLElement> }) {
+  // Pintado = colapsado. A cor é a da entidade; sem tema, o accent do app.
+  // `tinta` é o par de contraste que o tema já garante (§4.9) — nunca um
+  // cinza nosso por cima da cor do banco.
+  const tinta = colapsado ? (tema ? 'var(--theme-text)' : 'var(--text-on-accent)') : 'var(--text-primary)';
+  // Pills sobre cor: vidro da própria tinta, em vez do surface claro, que
+  // viraria um bloco branco no meio do vermelho.
+  const pill: React.CSSProperties = colapsado
+    ? {
+        ...botaoPill,
+        color: tinta,
+        background: `color-mix(in srgb, ${tinta} 18%, transparent)`,
+        borderColor: `color-mix(in srgb, ${tinta} 32%, transparent)`,
+      }
+    : botaoPill;
+  // A identidade (ícone + nome) ocupa o lugar do título. Fica sempre montada
+  // para o cross-fade ter o que animar nos dois sentidos.
+  const identidade = (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 'var(--space-sm)',
+        minWidth: 0,
+        color: tinta,
+        opacity: colapsado ? 1 : 0,
+        transform: colapsado ? 'translateY(0)' : 'translateY(6px)',
+        transition: `opacity ${TRANSICAO}, transform ${TRANSICAO}`,
+        pointerEvents: colapsado ? undefined : 'none',
+      }}
+      aria-hidden={!colapsado}
+    >
+      {icone && <span style={{ display: 'inline-flex', flexShrink: 0 }}>{icone}</span>}
+      {/* 16px (type-numeric, o mesmo peso do nome nos cards) e não 20: aqui o
+          nome divide a barra com o seletor de mês, e em 20 "Conta Santander"
+          virava "Conta …" num iPhone. É o "título pequeno" do padrão. */}
+      <span className="type-numeric" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {titulo}
+      </span>
+    </span>
+  );
+
   return (
     <header ref={innerRef} style={headerSticky}>
-      <div aria-hidden style={headerFade} />
+      {/* Duas camadas de fundo em cross-fade: a translúcida de sempre e a cor
+          da entidade, que entra quando o hero sai de vista. */}
+      <div aria-hidden style={{ ...headerFade, opacity: colapsado ? 0 : 1, transition: `opacity ${TRANSICAO}` }} />
+      <div
+        aria-hidden
+        data-card-theme={tema ?? undefined}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: -1,
+          pointerEvents: 'none',
+          background: tema ? 'var(--theme-bg)' : 'var(--accent-default)',
+          opacity: colapsado ? 1 : 0,
+          transition: `opacity ${TRANSICAO}`,
+        }}
+      />
       <div style={topBar}>
         {/* Voltar (ou fechar) + título */}
         <div style={{ display: 'flex', flex: '1 0 0', alignItems: 'center', gap: 'var(--space-sm)', minWidth: 0 }}>
@@ -186,14 +258,18 @@ function HeaderChuld({ titulo, onVoltar, fechar = false, fab = false, onFab, mos
             type="button"
             aria-label={fechar ? 'Fechar' : 'Voltar'}
             onClick={onVoltar}
-            style={{ ...botaoPill, width: 40, height: 40 }}
+            style={{ ...pill, width: 40, height: 40 }}
           >
             {fechar ? <IconeClose tamanho={20} /> : <IconeChevronLeft tamanho={20} />}
           </button>
-          {!fechar && (
+          {fechar ? (
+            // Drill-down: o título fica escondido até o hero sumir — aí a
+            // identidade sobe para cá.
+            identidade
+          ) : (
             <span
               className="type-title"
-              style={{ color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              style={{ color: tinta, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', transition: `color ${TRANSICAO}` }}
             >
               {titulo}
             </span>
@@ -203,16 +279,19 @@ function HeaderChuld({ titulo, onVoltar, fechar = false, fab = false, onFab, mos
         {/* Seletor de mês opcional (drill-down do cartão, §5.3) */}
         {mostrarData && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)', flex: '0 0 auto' }}>
-            <button type="button" aria-label="Mês anterior" onClick={onAnterior} style={{ ...botaoPill, width: 36, height: 36 }}>
+            <button type="button" aria-label="Mês anterior" onClick={onAnterior} style={{ ...pill, width: 36, height: 36 }}>
               <IconeChevronLeft tamanho={18} />
             </button>
             <span
               className="type-title"
-              style={{ color: 'var(--text-primary)', padding: '0 var(--space-xs)', textTransform: 'capitalize', whiteSpace: 'nowrap' }}
+              // Sem `capitalize`: aqui o rótulo é uma frase ("Fatura de nov"),
+              // e capitalize maiusculiza CADA palavra ("Fatura De Nov"). A tela
+              // entrega o texto já como deve ser lido.
+              style={{ color: tinta, padding: '0 var(--space-xs)', whiteSpace: 'nowrap', transition: `color ${TRANSICAO}` }}
             >
               {mesAno}
             </span>
-            <button type="button" aria-label="Próximo mês" onClick={onProximo} style={{ ...botaoPill, width: 36, height: 36 }}>
+            <button type="button" aria-label="Próximo mês" onClick={onProximo} style={{ ...pill, width: 36, height: 36 }}>
               <IconeChevronRight tamanho={18} />
             </button>
           </div>

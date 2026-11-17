@@ -53,6 +53,21 @@
 >   - A lista por dia virou o componente **`ExtratoDoMes`** (era a função
 >     `Lancamentos` dentro da Home): a aba Lançamentos e o drill-down da conta
 >     usam a MESMA lista, e não duas que precisam ser mantidas em paralelo.
+>   - **No extrato de uma conta só, a bolinha de conta some** de cada linha: ela
+>     existe para distinguir contas (§4.9), e ali não distingue nada.
+> - **Header colapsante nos drill-downs** (§5.3, §5.6): ao rolar, o hero some
+>   atrás do header — e a identidade **sobe para ele**. O header se pinta com a
+>   **cor da entidade** (accent quando ela não tem tema) e assume **ícone +
+>   nome**; voltando ao topo, volta a ser translúcido. É o padrão "título grande
+>   vira título pequeno" do iOS, com a cor fazendo o papel de dizer *onde* você
+>   está — o drill-down é uma tela só por entidade, e a cor é o que impede
+>   confundir "qual cartão é este" depois de rolar.
+>   - No cartão, colapsado, o seletor encurta de "Fatura de nov" para **"Nov"**:
+>     a identidade acabou de ocupar a mesma barra, "Fatura de" vira redundante e
+>     o nome do cartão não caberia. O mês de fechamento, que é a identidade do
+>     ciclo (§5.3), continua à vista.
+>   - Na conta, o **ano só aparece quando não é o corrente**, pelo mesmo motivo
+>     de largura.
 
 > **Mudanças na v0.11** (sessão de documentação — reconcilia o spec com o código,
 > que andou cinco commits além da v0.10; nenhuma decisão nova de produto, exceto
@@ -1269,6 +1284,11 @@ fatura da Home (§4.8).
   da linha** (selo "3/12", ícone de coleção), não como seção. Sem subtotais por
   grupo — o total do ciclo já vive no hero. *(v0.10 — revoga a divisão em três
   grupos COMPRAS DO CICLO · PARCELAS · ASSINATURAS.)*
+- **Header colapsante** (v0.12): enquanto o hero está à vista, o header é o
+  translúcido de sempre (só ✕ e o seletor de ciclo). Quando o hero passa por
+  trás dele, o header **se pinta com a cor do cartão** e mostra **logo + nome**,
+  e o seletor encurta para só o mês. A identidade nunca some da tela — muda de
+  lugar.
 - **FAB de lançar** (v0.12): abre o mesmo sheet do §5.2 com **este cartão já
   selecionado** — o contexto responde "onde saiu o gasto" antes de perguntar,
   mas só como default: trocar de conta/cartão ali continua valendo.
@@ -1433,7 +1453,8 @@ mensal da Home.
     /saídas, rótulos acompanhando o mês), **extrato corrido por dia** com o saldo
     ao pé de cada dia e o "Mês anterior" no topo (§4.7), e **FAB** que abre o
     Lançar nesta conta (§5.2). Tocar na linha de fatura abre o cartão no ciclo
-    que vence ali (o mesmo "clique vivo" da §5.3). O que entra no extrato e por
+    que vence ali (o mesmo "clique vivo" da §5.3). O header **colapsa como o do
+    cartão**: sumiu o hero, ele veste a cor da conta e assume logo + nome. O que entra no extrato e por
     que a transferência ganha sinal: ver o changelog da v0.12.
 - **Cofre:** cards compactos de poupança, **mesmo layout** da conta, legendas
   próprias — **Guardado** (saldo, foto do presente) / **Depositos** / **Retiradas**

@@ -13,6 +13,8 @@ import {
   type IndiceCiclos,
 } from '../lib/recorrencia';
 import type { Cartao, Lancamento } from '../types/db';
+import { useColapsoDoHero } from '../lib/useColapsoDoHero';
+import { LogoBanco, IconeImage } from '../icons';
 
 /**
  * Cartão — Fatura (drill-down) — §5.3.
@@ -95,6 +97,9 @@ export function CartaoFatura({
   onPagar,
   onLancar,
 }: Props) {
+  // Header colapsante (§5.3): some o hero, sobe a identidade para o header.
+  const { ref: refHero, colapsado } = useColapsoDoHero<HTMLDivElement>();
+
   // Ciclo exibido — começa no ciclo que a coisa clicada representa; navegável
   // ciclo-a-ciclo (§5.3). Não navega mais por mês: fatura é ciclo, não mês.
   const [cicloAbs, setCicloAbs] = useState(cicloInicial);
@@ -130,7 +135,14 @@ export function CartaoFatura({
   // Rótulo do header: sempre "Fatura de <mês de fechamento>" (opção A). O mês de
   // fechamento é a identidade estável do ciclo, independente da fase.
   const mesFechamento = ((cicloAbs % 12) + 12) % 12;
-  const tituloCiclo = `Fatura de ${MESES_CURTO[mesFechamento]}`;
+  const mesCurto = MESES_CURTO[mesFechamento];
+  // Colapsado, o rótulo encolhe para só o mês: a identidade do cartão acabou de
+  // subir para esta mesma barra, e "Fatura de" vira redundante — enquanto o
+  // nome do cartão, que divide a largura com ele, não cabe ("Nu…"). A
+  // informação que importa (QUAL mês fecha o ciclo, §5.3) continua ali.
+  const tituloCiclo = colapsado
+    ? `${mesCurto[0].toUpperCase()}${mesCurto.slice(1)}`
+    : `Fatura de ${mesCurto}`;
 
   // Lista corrida por dia (§5.3, item 2): as compras do ciclo deixam de ser
   // agrupadas por à vista/parcela/assinatura e passam a ser um extrato ordenado
@@ -190,6 +202,9 @@ export function CartaoFatura({
         mesAno={tituloCiclo}
         onAnterior={() => mudarCiclo(-1)}
         onProximo={() => mudarCiclo(1)}
+        colapsado={colapsado}
+        tema={cartao.tema}
+        icone={cartao.banco ? <LogoBanco chave={cartao.banco} tamanho={22} /> : <IconeImage tamanho={20} />}
       />
 
       <main
@@ -204,7 +219,9 @@ export function CartaoFatura({
           paddingBottom: espacoParaFAB(fase === 'fechada' ? ALTURA_FOOTER_PAGAMENTO : 0),
         }}
       >
-        {/* Hero (§5.3): mesmas informações do card da Carteira, layout próprio. */}
+        {/* Hero (§5.3): mesmas informações do card da Carteira, layout próprio.
+            O wrapper é o alvo observado pelo header colapsante. */}
+        <div ref={refHero}>
         <CartaoHeroDrillDown
           nome={cartao.nome}
           realizado={realizado}
@@ -216,6 +233,7 @@ export function CartaoFatura({
           banco={cartao.banco}
           bandeira={cartao.bandeira}
         />
+        </div>
 
         {gruposPorDia.length === 0 ? (
           <p

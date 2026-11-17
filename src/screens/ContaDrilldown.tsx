@@ -14,6 +14,8 @@ import {
   type IndiceCiclos,
 } from '../lib/recorrencia';
 import type { Conta, Cartao, Lancamento, Transferencia } from '../types/db';
+import { useColapsoDoHero } from '../lib/useColapsoDoHero';
+import { LogoBanco, IconeImage } from '../icons';
 
 /**
  * Conta-corrente — drill-down (§5.6, v0.12). O irmão do drill-down do cartão
@@ -76,6 +78,9 @@ export function ContaDrilldown({
   onAbrirCartao,
   onLancar,
 }: Props) {
+  // Header colapsante (§5.6): some o hero, sobe a identidade para o header.
+  const { ref: refHero, colapsado } = useColapsoDoHero<HTMLDivElement>();
+
   // Mês exibido, local à tela (como o ciclo é local ao drill-down do cartão).
   const [mesAbs, setMesAbs] = useState(mesInicial.ano * 12 + mesInicial.mes);
   const ano = Math.floor(mesAbs / 12);
@@ -164,6 +169,12 @@ export function ContaDrilldown({
     return { entradas, saidas };
   }, [ocorrencias, transferenciasDaConta, lancamentos, cartoes, ano, mes, hoje, excecoes, pagamentos, corte, ciclos, conta.id]);
 
+  // Rótulo do seletor: mês com inicial maiúscula, e o ANO só quando não é o
+  // corrente — no uso normal ele é ruído e rouba a largura do nome da conta,
+  // que divide a barra do header com o seletor.
+  const mesCurto = MESES_CURTO[mes];
+  const rotuloMes = `${mesCurto[0].toUpperCase()}${mesCurto.slice(1)}${ano === hoje.getFullYear() ? '' : ` ${ano}`}`;
+
   // Rótulos acompanham o significado do número (Item 2) — o mesmo texto dos
   // cards da aba Contas, para a tela não contradizer a lista de onde veio.
   const rotuloSaldo = ehMesCorrente ? 'Saldo Atual' : ehMesFuturo ? 'Saldo Previsto' : 'Saldo Final';
@@ -178,9 +189,12 @@ export function ContaDrilldown({
         fechar
         onVoltar={onVoltar}
         mostrarData
-        mesAno={`${MESES_CURTO[mes]} ${ano}`}
+        mesAno={rotuloMes}
         onAnterior={() => setMesAbs((m) => m - 1)}
         onProximo={() => setMesAbs((m) => m + 1)}
+        colapsado={colapsado}
+        tema={conta.tema}
+        icone={conta.icone ? <LogoBanco chave={conta.icone} tamanho={22} /> : <IconeImage tamanho={20} />}
       />
 
       <main
@@ -193,7 +207,10 @@ export function ContaDrilldown({
           paddingBottom: espacoParaFAB(),
         }}
       >
-        {/* Hero: os mesmos números do card da aba Contas, em card cheio. */}
+        {/* Hero: os mesmos números do card da aba Contas, em card cheio. O
+            wrapper é o alvo observado — ao sumir atrás do header, a identidade
+            reaparece lá em cima. */}
+        <div ref={refHero}>
         <CardDeEntidade
           tipo="conta"
           nome={conta.nome}
@@ -206,6 +223,7 @@ export function ContaDrilldown({
           rotuloPos={rotuloPos}
           rotuloNeg={rotuloNeg}
         />
+        </div>
 
         {/* Extrato: mesma gramática da aba Lançamentos, recortado nesta conta. */}
         <ExtratoDoMes
