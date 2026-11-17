@@ -49,6 +49,27 @@ export function Toggle({ modo, onMudar }: { modo: ModoLancamento; onMudar: (m: M
   );
 }
 
+/** Quantas sugestões cabem no dropdown de uma vez (o resto rola). */
+const LIMITE_SUGESTOES = 6;
+
+/**
+ * As sugestões do campo Descrição (§4.6) — a regra mora aqui, ao lado do
+ * campo, e serve tanto o Lançar quanto o Editar.
+ *
+ * Campo VAZIO devolve as MAIS USADAS em vez de nada: tocar no campo já abre a
+ * lista, e o caso comum ("mercado" de novo) vira um toque em vez de digitar.
+ * O histórico já chega ordenado por frequência + recência (§4.6), então aqui é
+ * só cortar. Digitando, filtra por "contém" e preserva essa ordem — quem
+ * aparece primeiro é o que mais se usa, não o que vem antes no alfabeto.
+ */
+export function filtrarSugestoes(historico: string[], texto: string): string[] {
+  const q = texto.trim().toLowerCase();
+  if (!q) return historico.slice(0, LIMITE_SUGESTOES);
+  return historico
+    .filter((d) => { const dl = d.toLowerCase(); return dl.includes(q) && dl !== q; })
+    .slice(0, LIMITE_SUGESTOES);
+}
+
 export function CampoDescricao({
   valor, onMudar, sugestoes, onEscolherSugestao, obrigatorio, iniciaTravada = false,
 }: {
@@ -176,6 +197,10 @@ export function CampoDescricao({
                 overflow: 'hidden',
                 zIndex: 5,
                 boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+                // Com a lista aberta no toque, ela pode vir cheia — rola em vez
+                // de cobrir o sheet inteiro.
+                maxHeight: 240,
+                overflowY: 'auto',
               }}
             >
               {sugestoes.map((s) => (

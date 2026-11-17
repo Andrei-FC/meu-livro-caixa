@@ -55,6 +55,9 @@
 >     usam a MESMA lista, e não duas que precisam ser mantidas em paralelo.
 >   - **No extrato de uma conta só, a bolinha de conta some** de cada linha: ela
 >     existe para distinguir contas (§4.9), e ali não distingue nada.
+> - **O campo Descrição abre a lista no toque** (§4.6, §5.2): vazio, mostra as
+>   mais usadas; digitando, filtra como já fazia. O lançamento repetido deixa de
+>   exigir digitação para só então sugerir (princípio 1).
 > - **Header colapsante nos drill-downs** (§5.3, §5.6): ao rolar, o hero some
 >   atrás do header — e a identidade **sobe para ele**. O header se pinta com a
 >   **cor da entidade** (accent quando ela não tem tema) e assume **ícone +
@@ -986,6 +989,12 @@ Não há lista fixa de categorias. **A descrição é a categoria.**
   usadas, por frequência/recência. Tocar na sugestão vira uma **pill** na linha
   de texto (que é a categoria). É a **prevenção na origem**: tocar na sugestão é
   o que mantém a consistência (quase nunca se digita do zero).
+- **A lista abre no toque, antes de digitar (v0.12).** Campo vazio já mostra as
+  **mais usadas** (mesma ordem de frequência + recência); digitar vai filtrando.
+  Antes, sem uma letra digitada não havia sugestão — e o caso mais comum
+  ("mercado" outra vez) exigia digitar algo para então tocar. Isto é o
+  princípio 1 aplicado ao campo: o atalho do caso repetido é **um toque**, não
+  "digite para que eu te ajude".
 - **Categoria nova nasce ao salvar.** Quando o usuário digita um nome que não
   existe no histórico (sem sugestão para tocar), a categoria nova só passa a
   existir — e a entrar no histórico de sugestões — **quando o lançamento é
@@ -1215,7 +1224,8 @@ Hierarquia do topo (essencial, sem rolar) para o fim (opcional, rolando):
 1. **Valor** — foco automático, teclado numérico já aberto.
 2. **Saída / Entrada / Transferência** — toggle ternário, default **Saída**.
    Em **Transferência**, o sheet muda de estado (ver abaixo).
-3. **Descrição/categoria** — com autocomplete inteligente (§4.6).
+3. **Descrição/categoria** — com autocomplete inteligente (§4.6). Tocar no campo
+   **já abre a lista das mais usadas** (v0.12); digitar filtra.
 4. **Data** — default hoje.
 5. **Conta** — default no **meio mais usado** (conta ou cartão, v0.12 — revoga
    "default na principal"): frequência + recência sobre as saídas, mesma régua

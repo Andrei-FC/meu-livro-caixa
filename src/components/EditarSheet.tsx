@@ -13,6 +13,7 @@ import {
   CampoSeletor,
   CampoNota,
   ComoSeRepete,
+  filtrarSugestoes,
   type RepeteLancamento,
 } from './_camposLancamento';
 import { IconeClose } from '../icons';
@@ -129,11 +130,11 @@ export function EditarSheet({
 
   const valor = textoParaReais(valorTexto);
 
-  const sugestoes = useMemo(() => {
-    const q = descricao.trim().toLowerCase();
-    if (!q) return [];
-    return historicoDescricoes.filter((d) => { const dl = d.toLowerCase(); return dl.includes(q) && dl !== q; }).slice(0, 4);
-  }, [descricao, historicoDescricoes]);
+  // Mesma régua do Lançar (§4.6): vazio = as mais usadas, digitando filtra.
+  const sugestoes = useMemo(
+    () => filtrarSugestoes(historicoDescricoes, descricao),
+    [descricao, historicoDescricoes],
+  );
 
   // "só esta" abre o leque de cardinalidade (parcelar). Nos demais escopos e em
   // avulso, parcelar não faz sentido/aparece.

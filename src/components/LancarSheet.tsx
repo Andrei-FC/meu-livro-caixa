@@ -13,6 +13,7 @@ import {
   CampoSeletor,
   CampoNota,
   ComoSeRepete,
+  filtrarSugestoes,
   hojeISO,
   type ModoLancamento,
   type RepeteLancamento,
@@ -116,16 +117,11 @@ export function LancarSheet({
   );
   const contaEfetiva = contaSel ?? (cartaoSel ? null : contaPadrao);
 
-  // Sugestões de descrição: prefixo, normalizado (§4.6 — versão simples).
-  const sugestoes = useMemo(() => {
-    const q = descricao.trim().toLowerCase();
-    if (!q) return [];
-    // historicoDescricoes já vem ordenado por frequência+recência (§4.6);
-    // aqui só filtramos por "contém" e mantemos essa ordem.
-    return historicoDescricoes
-      .filter((d) => { const dl = d.toLowerCase(); return dl.includes(q) && dl !== q; })
-      .slice(0, 4);
-  }, [descricao, historicoDescricoes]);
+  // Sugestões de descrição (§4.6): vazio = as mais usadas; digitando, filtra.
+  const sugestoes = useMemo(
+    () => filtrarSugestoes(historicoDescricoes, descricao),
+    [descricao, historicoDescricoes],
+  );
 
   function resetar() {
     setModo(transferenciaFixa ? 'transferencia' : 'saida');
