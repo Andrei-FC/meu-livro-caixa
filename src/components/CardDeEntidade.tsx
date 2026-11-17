@@ -111,7 +111,12 @@ function ComTesteira(props: ContaProps | PoupancaProps | CofreProps) {
       : tema
       ? 'var(--theme-bg)'
       : 'var(--bg-elevated)';
-  const testeiraFg = tipo === 'cofre' || tema ? 'var(--theme-text)' : 'var(--text-primary)';
+  // Cofre: a testeira é accent, e o par de contraste do accent é
+  // --text-on-accent. Usar --theme-text aqui não resolvia (o card de cofre não
+  // leva data-card-theme), e o texto caía no escuro sobre a cor — o mesmo erro
+  // que o header colapsado tinha.
+  const testeiraFg =
+    tipo === 'cofre' ? 'var(--text-on-accent)' : tema ? 'var(--theme-text)' : 'var(--text-primary)';
 
   return (
     <div style={{ ...CARD, background: 'var(--bg-surface)' }} data-card-theme={tipo === 'cofre' ? undefined : tema}>

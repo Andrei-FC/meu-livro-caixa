@@ -234,13 +234,16 @@ function HeaderChuld({ titulo, onVoltar, fechar = false, fab = false, onFab, mos
   );
 
   return (
-    <header ref={innerRef} style={headerSticky}>
+    // O tema vai no <header>, não na camada de fundo: `--theme-bg`/`--theme-text`
+    // são herdados, então precisam estar num ANCESTRAL de quem os usa. Com o
+    // atributo só na camada, o fundo pintava mas o texto e os botões ficavam
+    // com o token vazio — ou seja, texto escuro e pill branca sobre a cor.
+    <header ref={innerRef} data-card-theme={tema ?? undefined} style={headerSticky}>
       {/* Duas camadas de fundo em cross-fade: a translúcida de sempre e a cor
           da entidade, que entra quando o hero sai de vista. */}
       <div aria-hidden style={{ ...headerFade, opacity: colapsado ? 0 : 1, transition: `opacity ${TRANSICAO}` }} />
       <div
         aria-hidden
-        data-card-theme={tema ?? undefined}
         style={{
           position: 'absolute',
           inset: 0,
