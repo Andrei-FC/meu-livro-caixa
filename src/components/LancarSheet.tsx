@@ -46,9 +46,10 @@ type Props = {
   onFechar: () => void;
   /**
    * Chamado após gravar com sucesso — a Home recarrega os dados e mostra o
-   * banner de confirmação (§5.2): o que foi lançado, quanto e onde caiu.
+   * banner de confirmação (§5.2): o que foi lançado, quanto e onde caiu. O
+   * `alvo` é o que permite tocar no banner e cair na edição daquele lançamento.
    */
-  onSalvou: (aviso: Aviso) => void;
+  onSalvou: (aviso: Aviso, alvo: AlvoSalvo) => void;
   /**
    * Meio de pagamento já selecionado ao abrir (§5.2, passo 5). A Home passa o
    * MAIS USADO (conta ou cartão, tanto faz); o drill-down do cartão (§5.3)
@@ -68,6 +69,19 @@ type Props = {
     direcao: 'deposito' | 'retirada';
     titulo: string;
   };
+};
+
+/**
+ * O que acabou de ser gravado — viaja junto com o aviso para o banner poder
+ * abrir a edição daquilo (§5.2). Só o id e a data: com os dois, a Home pede ao
+ * motor a ocorrência correspondente, em vez de montar uma à mão.
+ */
+export type AlvoSalvo = {
+  tipo: 'lancamento' | 'transferencia';
+  /** Id da REGRA gravada (a linha no banco). */
+  id: string;
+  /** Data da regra — diz ao motor em que mês procurar a ocorrência. */
+  data: string;
 };
 
 /** Converte o valor digitado (centavos como string) em número em reais. */
@@ -188,6 +202,7 @@ export function LancarSheet({
     // O aviso é montado AQUI, antes do resetar() limpar os campos — depois do
     // reset não há mais de onde tirar conta, cartão ou descrição.
     let aviso: Aviso;
+    let alvo: AlvoSalvo;
     try {
       if (ehTransferencia) {
         const payload = {
@@ -200,8 +215,13 @@ export function LancarSheet({
           recorrencia_fim: repete === 'recorrente' && !recIndefinida ? recVezes : null,
           serie_id: repete === 'recorrente' ? crypto.randomUUID() : null,
         };
-        const { error } = await comTimeout(supabase.from('transferencias').insert(payload));
+        // .select(): sem ele o insert volta vazio (return=minimal) e o banner
+        // não teria o que abrir. O id também prova que a linha passou pela RLS.
+        const { data: linha, error } = await comTimeout(
+          supabase.from('transferencias').insert(payload).select('id').single(),
+        );
         if (error) throw error;
+        alvo = { tipo: 'transferencia', id: linha!.id, data };
         // Transferência é neutra no saldo (§4.5): sem sinal, swatch do destino
         // (é para onde o dinheiro foi).
         aviso = {
@@ -230,8 +250,11 @@ export function LancarSheet({
           // e ancorar exceções (§4.1, §4.3); à vista não é série.
           serie_id: repete === 'avista' ? null : crypto.randomUUID(),
         };
-        const { error } = await comTimeout(supabase.from('lancamentos').insert(payload));
+        const { data: linha, error } = await comTimeout(
+          supabase.from('lancamentos').insert(payload).select('id').single(),
+        );
         if (error) throw error;
+        alvo = { tipo: 'lancamento', id: linha!.id, data };
         // Onde caiu: o cartão, se foi no cartão; senão a conta efetiva (que
         // pode ser a padrão, nunca tocada pelo usuário — daí o banner).
         const meio = cartaoSel ?? contaEfetiva;
@@ -245,7 +268,7 @@ export function LancarSheet({
         };
       }
       resetar();
-      onSalvou(aviso);
+      onSalvou(aviso, alvo);
       onFechar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro ao salvar.');

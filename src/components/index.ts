@@ -41,6 +41,7 @@ export { BottomSheet } from './BottomSheet';
 export { SeletorContaCartao } from './SeletorContaCartao';
 export type { ContextoSeletor, Selecao } from './SeletorContaCartao';
 export { LancarSheet } from './LancarSheet';
+export type { AlvoSalvo } from './LancarSheet';
 export { FazerPagamentoSheet } from './FazerPagamentoSheet';
 export { EditarSheet } from './EditarSheet';
 export type { EscopoSerie } from './EditarSheet';

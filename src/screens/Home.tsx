@@ -19,6 +19,7 @@ import {
   saldoPorPoupanca,
   movimentacoesDaPoupanca,
   transferenciasNoMes,
+  parteData,
   type OcorrenciaLancamento,
   type OcorrenciaTransferencia,
 } from '../lib/recorrencia';
@@ -36,6 +37,7 @@ import {
   MenuDrawer,
   type DestinoMenu,
   LancarSheet,
+  type AlvoSalvo,
   ExtratoDoMes,
   BannerTemporario,
   type Aviso,
@@ -86,8 +88,9 @@ export function Home() {
   const [erro, setErro] = useState<string | null>(null);
   const [sheetAberto, setSheetAberto] = useState(false);
   // Banner de confirmação do último lançamento (§5.2) — some sozinho. null =
-  // nada na tela. Vive na Home porque sobrevive ao fechamento do sheet.
-  const [aviso, setAviso] = useState<Aviso | null>(null);
+  // nada na tela. Vive na Home porque sobrevive ao fechamento do sheet, e
+  // guarda junto o ALVO: tocar no banner abre a edição do que ele anuncia.
+  const [aviso, setAviso] = useState<{ dados: Aviso; alvo: AlvoSalvo } | null>(null);
   const [menuAberto, setMenuAberto] = useState(false);
   const [emEdicao, setEmEdicao] = useState<OcorrenciaLancamento | null>(null);
   // Sheet de depósito/retirada da poupança (§5.4): reusa o LancarSheet em modo
@@ -514,6 +517,32 @@ export function Home() {
     // TODO: rotear categorias/configurações (§5.8)
   }
 
+  /**
+   * Toque no banner (§5.2) → edição do que acabou de ser lançado.
+   *
+   * O banner guarda só o id da REGRA e a data; a ocorrência concreta quem dá é
+   * o motor, pedindo o mês daquela data — o mesmo caminho da lista, então uma
+   * parcela ou recorrente abre na 1ª ocorrência com índice e total corretos,
+   * em vez de uma ocorrência montada à mão aqui. O banner só aparece depois do
+   * recarregar, então a regra já está em `lancamentos` quando se toca.
+   *
+   * Transferência não tem editor (§5.7): cai na mesma confirmação de apagar que
+   * o lápis da linha abre.
+   */
+  function abrirDoAviso(alvo: AlvoSalvo) {
+    const [ano, mes] = parteData(alvo.data);
+    setPagina(null); // o editor mora na Home; um drill-down aberto sai da frente
+    if (alvo.tipo === 'lancamento') {
+      const o = lancamentosNoMes(lancamentos, ano, mes, hoje, indiceExcecoes)
+        .find((x) => x.origemId === alvo.id);
+      if (o) setEmEdicao(o);
+    } else {
+      const t = transferenciasNoMes(transferencias, ano, mes, hoje)
+        .find((x) => x.origemId === alvo.id);
+      if (t) setTransfApagar(t);
+    }
+  }
+
   // Grava a data efetiva de pagamento de uma fatura fechada (§5.3). Upsert por
   // (cartao_id, ciclo_abs): pagar de novo o mesmo ciclo sobrescreve a data
   // (não acumula linhas). A data escolhida passa a reger em que mês/dia a
@@ -602,9 +631,13 @@ export function Home() {
           historicoDescricoes={historicoDescricoes}
           meioPadrao={{ kind: 'cartao', cartao: pagina.cartao }}
           onFechar={() => setSheetAberto(false)}
-          onSalvou={(a) => { carregar(); setAviso(a); }}
+          onSalvou={(a, alvo) => { carregar().then(() => setAviso({ dados: a, alvo })); }}
         />
-        <BannerTemporario aviso={aviso} onFim={() => setAviso(null)} />
+        <BannerTemporario
+          aviso={aviso?.dados ?? null}
+          onFim={() => setAviso(null)}
+          onAbrir={aviso ? () => { const alvo = aviso.alvo; setAviso(null); abrirDoAviso(alvo); } : undefined}
+        />
       </>
     );
   }
@@ -637,9 +670,13 @@ export function Home() {
           historicoDescricoes={historicoDescricoes}
           meioPadrao={{ kind: 'conta', conta: pagina.conta }}
           onFechar={() => setSheetAberto(false)}
-          onSalvou={(a) => { carregar(); setAviso(a); }}
+          onSalvou={(a, alvo) => { carregar().then(() => setAviso({ dados: a, alvo })); }}
         />
-        <BannerTemporario aviso={aviso} onFim={() => setAviso(null)} />
+        <BannerTemporario
+          aviso={aviso?.dados ?? null}
+          onFim={() => setAviso(null)}
+          onAbrir={aviso ? () => { const alvo = aviso.alvo; setAviso(null); abrirDoAviso(alvo); } : undefined}
+        />
         {/* Confirmação de apagar transferência — a mesma da Home, porque a
             linha de transferência existe aqui também (§5.7). */}
         {transfApagar && (
@@ -694,7 +731,7 @@ export function Home() {
           cartoes={cartoes}
           historicoDescricoes={historicoDescricoes}
           onFechar={() => setTransfFixa(null)}
-          onSalvou={(a) => { carregar(); setAviso(a); }}
+          onSalvou={(a, alvo) => { carregar().then(() => setAviso({ dados: a, alvo })); }}
           transferenciaFixa={
             transfFixa
               ? {
@@ -705,7 +742,11 @@ export function Home() {
               : undefined
           }
         />
-        <BannerTemporario aviso={aviso} onFim={() => setAviso(null)} />
+        <BannerTemporario
+          aviso={aviso?.dados ?? null}
+          onFim={() => setAviso(null)}
+          onAbrir={aviso ? () => { const alvo = aviso.alvo; setAviso(null); abrirDoAviso(alvo); } : undefined}
+        />
       </>
     );
   }
@@ -939,13 +980,17 @@ export function Home() {
         historicoDescricoes={historicoDescricoes}
         meioPadrao={meioMaisUsado}
         onFechar={() => setSheetAberto(false)}
-        onSalvou={(a) => { carregar(); setAviso(a); }}
+        onSalvou={(a, alvo) => { carregar().then(() => setAviso({ dados: a, alvo })); }}
       />
 
       {/* Banner do último lançamento (§5.2): o default esperto do meio de
           pagamento preenche o campo Conta sem o usuário olhar — o banner é a
-          prova de onde caiu. Some sozinho. */}
-      <BannerTemporario aviso={aviso} onFim={() => setAviso(null)} />
+          prova de onde caiu. Some sozinho, e tocar nele abre a edição. */}
+      <BannerTemporario
+        aviso={aviso?.dados ?? null}
+        onFim={() => setAviso(null)}
+        onAbrir={aviso ? () => { const alvo = aviso.alvo; setAviso(null); abrirDoAviso(alvo); } : undefined}
+      />
 
       <EditarSheet
         aberto={emEdicao !== null}

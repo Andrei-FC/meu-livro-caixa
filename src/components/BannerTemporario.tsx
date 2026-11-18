@@ -13,8 +13,12 @@ import { formatarBR } from '../lib/formato';
  * não pede confirmação, não tem botão de desfazer e nunca bloqueia o caminho.
  *
  * Mesma gramática de presença dos overlays (usePresenca): desce do topo, some
- * em fade. Toque fecha antes da hora. Não tem scrim e não trava a rolagem —
- * não é diálogo.
+ * em fade. Não tem scrim e não trava a rolagem — não é diálogo.
+ *
+ * TOCAR NELE ABRE A EDIÇÃO do que acabou de ser lançado. O banner é a última
+ * coisa na tela que ainda fala daquele lançamento, e errar o valor ou a conta e
+ * ir atrás dele na lista é o caminho longo — o curto é tocar onde você já está
+ * olhando. Por isso ele é um <button>, não um aviso decorativo.
  */
 
 export type Aviso = {
@@ -35,8 +39,13 @@ export type Aviso = {
 type Props = {
   /** O aviso a mostrar; null = nada na tela. */
   aviso: Aviso | null;
-  /** Chamado quando o banner termina (tempo esgotado ou toque). */
+  /** Chamado quando o tempo acaba. */
   onFim: () => void;
+  /**
+   * Toque no banner. Ausente = o toque apenas fecha (o banner vira só aviso).
+   * Presente = abre a edição do lançamento que ele anuncia.
+   */
+  onAbrir?: () => void;
   /** Quanto tempo fica (ms). */
   duracaoMs?: number;
 };
@@ -47,7 +56,7 @@ const COR: Record<Aviso['variante'], string> = {
   neutro: 'var(--value-neutro)',
 };
 
-export function BannerTemporario({ aviso, onFim, duracaoMs = 3600 }: Props) {
+export function BannerTemporario({ aviso, onFim, onAbrir, duracaoMs = 3600 }: Props) {
   const { montado, visivel, duracao } = usePresenca(aviso !== null);
 
   // Guarda o último conteúdo para a animação de SAÍDA ter o que desenhar —
@@ -71,10 +80,11 @@ export function BannerTemporario({ aviso, onFim, duracaoMs = 3600 }: Props) {
   const sinal = dado.variante === 'entrada' ? '+' : dado.variante === 'saida' ? '−' : '';
 
   return (
+    // O wrapper só posiciona e anuncia (role=status); quem recebe o toque é o
+    // botão, para teclado e leitor de tela tratarem isto como a ação que é.
     <div
       role="status"
       aria-live="polite"
-      onClick={onFim}
       style={{
         position: 'fixed',
         top: 'calc(var(--space-sm) + env(safe-area-inset-top))',
@@ -83,20 +93,30 @@ export function BannerTemporario({ aviso, onFim, duracaoMs = 3600 }: Props) {
         zIndex: 90, // acima do FAB (40), abaixo dos sheets (100+)
         margin: '0 auto',
         maxWidth: 440,
+        // Desce do topo e some em fade — mesma curva dos overlays.
+        opacity: visivel ? 1 : 0,
+        transform: visivel ? 'translateY(0)' : 'translateY(-12px)',
+        transition: `opacity ${duracao}ms ${EASE_OVERLAY}, transform ${duracao}ms ${EASE_OVERLAY}`,
+        willChange: 'transform, opacity',
+      }}
+    >
+    <button
+      type="button"
+      onClick={onAbrir ?? onFim}
+      aria-label={onAbrir ? `Editar ${dado.titulo}` : undefined}
+      style={{
         display: 'flex',
         alignItems: 'center',
         gap: 12,
+        width: '100%',
+        textAlign: 'left',
         padding: '12px 14px',
         borderRadius: 'var(--radius-lg)',
         background: 'var(--bg-surface)',
         border: '1px solid var(--border-default)',
         boxShadow: '0 8px 24px rgba(0, 0, 0, 0.28)',
         cursor: 'pointer',
-        // Desce do topo e some em fade — mesma curva dos overlays.
-        opacity: visivel ? 1 : 0,
-        transform: visivel ? 'translateY(0)' : 'translateY(-12px)',
-        transition: `opacity ${duracao}ms ${EASE_OVERLAY}, transform ${duracao}ms ${EASE_OVERLAY}`,
-        willChange: 'transform, opacity',
+        font: 'inherit',
       }}
     >
       {/* Swatch do meio — mesmo contrato visual do seletor (§4.9). */}
@@ -148,6 +168,7 @@ export function BannerTemporario({ aviso, onFim, duracaoMs = 3600 }: Props) {
       <span className="type-body-small-strong" style={{ color: COR[dado.variante], flex: '0 0 auto' }}>
         {sinal}{formatarBR(dado.valor, { prefixo: true })}
       </span>
+    </button>
     </div>
   );
 }

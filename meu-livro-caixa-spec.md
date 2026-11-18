@@ -55,6 +55,11 @@
 >     usam a MESMA lista, e não duas que precisam ser mantidas em paralelo.
 >   - **No extrato de uma conta só, a bolinha de conta some** de cada linha: ela
 >     existe para distinguir contas (§4.9), e ali não distingue nada.
+> - **O banner de confirmação virou botão** (§5.2): tocar nele abre a edição do
+>   lançamento que ele anuncia. Lançar errado e caçar a linha na lista era o
+>   caminho longo; o curto é tocar onde o olho já está. Para isso o INSERT
+>   passou a pedir a linha de volta (`.select()`), e o banner só entra depois do
+>   recarregar — assim o motor já tem a regra para devolver a ocorrência.
 > - **O campo Descrição abre a lista no toque** (§4.6, §5.2): vazio, mostra as
 >   mais usadas; digitando, filtra como já fazia. O lançamento repetido deixa de
 >   exigir digitação para só então sugerir (princípio 1).
@@ -1245,8 +1250,11 @@ Hierarquia do topo (essencial, sem rolar) para o fim (opcional, rolando):
 9. **Banner de confirmação** (v0.12) — depois de gravar, um banner temporário no
    topo diz **descrição · onde caiu · valor** e some sozinho. Contrapartida do
    default do passo 5: se o app escolhe a conta/cartão por você, ele mostra a
-   escolha que fez. Sem desfazer (princípio 5) — para corrigir, o lançamento
-   está ali na lista, a um toque (§5.7). Toque no banner fecha antes da hora.
+   escolha que fez. **Tocar nele abre a edição daquele lançamento** (§5.7) — é o
+   caminho curto para consertar o que acabou de sair errado, enquanto ele ainda
+   está na tela. Continua **sem desfazer** (princípio 5): corrigir é editar, não
+   apagar e refazer. Transferência, que não tem editor, cai na confirmação de
+   apagar — a mesma do lápis da linha.
 
 Meta de design: nos 5 primeiros campos resolve-se ~90% dos lançamentos sem
 rolar. Defaults espertos = menos toques. O checkbox de assinatura mora no
