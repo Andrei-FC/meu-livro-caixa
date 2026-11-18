@@ -29,11 +29,25 @@ export type Aviso = {
   variante: 'entrada' | 'saida' | 'neutro';
   /** Onde caiu: nome da conta/cartão, ou "Origem → Destino". */
   meio: string;
+  /**
+   * O que acabou de acontecer, quando não é "lançado": "Alterado", "Excluído",
+   * "Desfeito" (§5.7). Vira prefixo da linha de baixo. Campo próprio, e não
+   * texto já concatenado no `meio`, porque quem reage ao banner precisa saber
+   * O QUE houve sem ler string.
+   */
+  estado?: string;
   /** Tema do swatch (§4.9) — da conta/cartão de destino do dinheiro. */
   tema?: string | null;
   /** Logo do banco (conta/cartão) ou chave de ícone (poupança). */
   icone?: string | null;
   ehPoupanca?: boolean;
+  /**
+   * Ação à direita, no lugar do valor — hoje só "Desfazer" (§5.7). Existe
+   * porque editar e excluir precisam de volta, e o lugar natural dela é o
+   * mesmo aviso que conta o que acabou de acontecer. O valor, quando há ação,
+   * desce para a linha de baixo: o botão é o que se procura ali.
+   */
+  acao?: { rotulo: string; onClick: () => void };
 };
 
 type Props = {
@@ -161,13 +175,44 @@ export function BannerTemporario({ aviso, onFim, onAbrir, duracaoMs = 3600 }: Pr
             whiteSpace: 'nowrap',
           }}
         >
-          {dado.meio}
+          {/* Com ação, a linha de baixo troca o ONDE pelo QUANTO: o botão come
+              a largura, e a cor do swatch já diz de qual conta/cartão se
+              trata. Sem ação (o "lançado"), o valor fica grande à direita e
+              aqui mora o meio de pagamento. */}
+          {dado.acao
+            ? `${dado.estado ?? ''}${dado.estado ? ' · ' : ''}${sinal}${formatarBR(dado.valor, { prefixo: true })}`
+            : dado.estado
+            ? `${dado.estado} · ${dado.meio}`
+            : dado.meio}
         </span>
       </div>
 
-      <span className="type-body-small-strong" style={{ color: COR[dado.variante], flex: '0 0 auto' }}>
-        {sinal}{formatarBR(dado.valor, { prefixo: true })}
-      </span>
+      {dado.acao ? (
+        <span
+          role="button"
+          tabIndex={0}
+          // Dentro de um <button>, outro <button> é HTML inválido — então a
+          // ação é um span com papel de botão. onPointerDown para o toque não
+          // escorregar para o banner inteiro (que abre a edição).
+          onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); dado.acao!.onClick(); }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dado.acao!.onClick(); } }}
+          className="type-body-small-strong"
+          style={{
+            flex: '0 0 auto',
+            color: 'var(--accent-default)',
+            padding: '6px 10px',
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--accent-subtle)',
+            cursor: 'pointer',
+          }}
+        >
+          {dado.acao.rotulo}
+        </span>
+      ) : (
+        <span className="type-body-small-strong" style={{ color: COR[dado.variante], flex: '0 0 auto' }}>
+          {sinal}{formatarBR(dado.valor, { prefixo: true })}
+        </span>
+      )}
     </button>
     </div>
   );

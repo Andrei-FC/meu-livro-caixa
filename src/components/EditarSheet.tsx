@@ -20,7 +20,10 @@ import { IconeClose } from '../icons';
 import { formatarBR } from '../lib/formato';
 import { parteData, mesDe } from '../lib/recorrencia';
 import { supabase, comTimeout } from '../lib/supabase';
-import type { Conta, Cartao, Lancamento } from '../types/db';
+import type { Conta, Cartao, Lancamento, ExcecaoSerie } from '../types/db';
+import type { Aviso } from './BannerTemporario';
+import type { Desfazer } from '../lib/desfazer';
+import type { AlvoSalvo } from './LancarSheet';
 import type { OcorrenciaLancamento } from '../lib/recorrencia';
 import { planejarDivisao } from '../lib/recorrencia';
 
@@ -51,8 +54,16 @@ type Props = {
   contas: Conta[];
   cartoes: Cartao[];
   historicoDescricoes: string[];
+  /** Exceções da base — o retrato de desfazer (§5.7) precisa das desta série. */
+  excecoes: ExcecaoSerie[];
   onFechar: () => void;
-  onSalvou: () => void;
+  /**
+   * Gravou. Devolve o que contar no banner, o RETRATO de desfazer (§5.7) —
+   * tirado antes da escrita, então repô-lo é voltar exatamente ao que era — e
+   * ONDE o lançamento ficou, para o toque no banner reabrir a edição
+   * (null ao excluir: não há o que reabrir).
+   */
+  onSalvou: (aviso: Aviso, desfazer: Desfazer, alvo: AlvoSalvo | null) => void;
 };
 
 /** Escopo de uma alteração de série (§4.3): só esta · esta e as futuras · todas. */
@@ -77,6 +88,7 @@ export function EditarSheet({
   contas,
   cartoes,
   historicoDescricoes,
+  excecoes,
   onFechar,
   onSalvou,
 }: Props) {
@@ -178,9 +190,10 @@ export function EditarSheet({
     if (error) throw error;
   }
 
-  /** "Só esta" no salvar — aplica a régua de 3 níveis (§4.3). */
-  async function salvarSoEsta() {
-    if (!ocorrencia || !regra) return;
+  /** "Só esta" no salvar — aplica a régua de 3 níveis (§4.3). Devolve o id da
+   *  regra criada, quando o caminho cria uma (desvínculo/parcelar). */
+  async function salvarSoEsta(): Promise<string | null> {
+    if (!ocorrencia || !regra) return null;
 
     const contaOriginal = ocorrencia.cartao_id ? null : ocorrencia.conta_id;
     const cartaoOriginal = ocorrencia.cartao_id;
@@ -206,9 +219,9 @@ export function EditarSheet({
         recorrencia_fim: null,
         assinatura: false,
         serie_id: crypto.randomUUID(),
-      }));
+      }).select('id').single());
       if (novo.error) throw novo.error;
-      return;
+      return novo.data!.id as string;
     }
 
     // NATUREZA — data/conta/cartão mudou: desvincula, vira avulso com o meio
@@ -228,9 +241,9 @@ export function EditarSheet({
         recorrencia_fim: null,
         assinatura: false,
         serie_id: null,
-      }));
+      }).select('id').single());
       if (novo.error) throw novo.error;
-      return;
+      return novo.data!.id as string;
     }
 
     // GRANDEZA — só valor/descrição/nota: override in-place (fica na série).
@@ -241,6 +254,7 @@ export function EditarSheet({
         { onConflict: 'serie_id,mes_alvo' },
       ));
     if (error) throw error;
+    return null;
   }
 
   /** Edita a regra inteira ("todas" ou "futuras" na 1ª ocorrência). Inclui o
@@ -264,9 +278,10 @@ export function EditarSheet({
     if (error) throw error;
   }
 
-  /** "Esta e as futuras" no salvar: divide a série mantendo o serie_id (§4.3). */
-  async function executarDivisao(acao: 'salvar' | 'excluir') {
-    if (!ocorrencia || !regra) return;
+  /** "Esta e as futuras" no salvar: divide a série mantendo o serie_id (§4.3).
+   *  Devolve o id da nova fase, quando há uma. */
+  async function executarDivisao(acao: 'salvar' | 'excluir'): Promise<string | null> {
+    if (!ocorrencia || !regra) return null;
     const corteIndice = ocorrencia.indice - 1; // indice 1-based
     const plano = planejarDivisao(
       regra,
@@ -307,29 +322,73 @@ export function EditarSheet({
         recorrencia_fim: plano.novaRegra.recorrencia_fim,
         assinatura: regra.assinatura,
         serie_id: ocorrencia.serieId,
-      }));
+      }).select('id').single());
       if (e3.error) throw e3.error;
+      return e3.data!.id as string;
     }
+    return null;
+  }
+
+  /**
+   * O retrato de desfazer (§5.7), tirado ANTES de escrever: a regra como está
+   * e as exceções desta série como estão. Repor isso é voltar ao que era,
+   * qualquer que tenha sido o caminho de escrita.
+   */
+  function tirarRetrato(): Extract<Desfazer, { tipo: 'lancamento' }> {
+    return {
+      tipo: 'lancamento',
+      regra: regra!,
+      criadas: [],
+      serieId: ocorrencia?.serieId ?? null,
+      excecoes: ocorrencia?.serieId
+        ? excecoes.filter((e) => e.serie_id === ocorrencia.serieId)
+        : [],
+    };
+  }
+
+  /** Conta/cartão para o banner: o escolhido agora, ou o da ocorrência. */
+  function meioDoAviso(): { nome: string; tema: string | null; icone: string | null } {
+    const k = cartaoSel ?? (ocorrencia?.cartao_id ? cartoes.find((c) => c.id === ocorrencia.cartao_id) ?? null : null);
+    if (k) return { nome: k.nome, tema: k.tema, icone: k.banco };
+    const c = contaSel ?? contas.find((x) => x.id === (ocorrencia?.conta_id ?? regra?.conta_id)) ?? null;
+    return { nome: c?.nome ?? '—', tema: c?.tema ?? null, icone: c?.icone ?? null };
   }
 
   async function aplicarEdicao() {
     if (!ocorrencia || !regra) return;
     setSalvando(true);
     setErro(null);
+    const retrato = tirarRetrato();
     try {
+      let criada: string | null = null;
       if (!ehSerieRecorrente) {
         await editarAvulso();
       } else if (escopo === 'so_esta') {
-        await salvarSoEsta();
+        criada = await salvarSoEsta();
       } else if (escopo === 'esta_e_futuras') {
         // 1ª ocorrência não tem passado a preservar → edita a regra inteira
         // (encerrar a fase antiga em 0 violaria recorrencia_fim >= 1).
         if (ocorrencia.indice - 1 === 0) await editarRegraInteira();
-        else await executarDivisao('salvar');
+        else criada = await executarDivisao('salvar');
       } else if (escopo === 'todas') {
         await editarRegraInteira();
       }
-      finalizar();
+      if (criada) retrato.criadas.push(criada);
+      const m = meioDoAviso();
+      finalizar(
+        {
+          titulo: descricao.trim() || ocorrencia.descricao,
+          valor,
+          variante: regra.tipo === 'entrada' ? 'entrada' : 'saida',
+          estado: 'Alterado',
+          meio: m.nome,
+          tema: m.tema,
+          icone: m.icone,
+        },
+        retrato,
+        // A data NOVA: mudou de mês, é lá que a ocorrência está agora.
+        { tipo: 'lancamento', id: criada ?? regra.id, data },
+      );
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro ao salvar.');
       setSalvando(false);
@@ -340,6 +399,7 @@ export function EditarSheet({
     if (!ocorrencia || !regra) return;
     setSalvando(true);
     setErro(null);
+    const retrato = tirarRetrato();
     try {
       if (escopoExc === null) {
         // Avulso OU parcela: apaga a regra inteira.
@@ -355,17 +415,32 @@ export function EditarSheet({
         const e2 = await comTimeout(supabase.from('lancamentos').delete().eq('id', regra.id));
         if (e2.error) throw e2.error;
       }
-      finalizar();
+      const m = meioDoAviso();
+      finalizar(
+        {
+          // Excluído é neutro: o valor não "saiu" nem "entrou", deixou de
+          // existir — mostrá-lo em vermelho diria o contrário.
+          titulo: ocorrencia.descricao,
+          valor: ocorrencia.valor,
+          variante: 'neutro',
+          estado: 'Excluído',
+          meio: m.nome,
+          tema: m.tema,
+          icone: m.icone,
+        },
+        retrato,
+        null,
+      );
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Erro ao excluir.');
       setSalvando(false);
     }
   }
 
-  function finalizar() {
+  function finalizar(aviso: Aviso, desfazer: Desfazer, alvo: AlvoSalvo | null) {
     setSalvando(false);
     setConfirmarExcluirTodas(false);
-    onSalvou();
+    onSalvou(aviso, desfazer, alvo);
     onFechar();
   }
 

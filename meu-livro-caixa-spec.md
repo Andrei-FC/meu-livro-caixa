@@ -31,8 +31,9 @@
 >   ~3,6s. É a contrapartida do default esperto: o campo Conta passa a vir
 >   preenchido sem o usuário olhar, então o app precisa **provar** onde lançou —
 >   senão a economia de um toque vira ida ao extrato pra conferir. Segue o
->   princípio 5 ("ver, não controlar"): informa, não pergunta, **não tem
->   desfazer** e não bloqueia nada. Vale para gasto, receita e transferência.
+>   princípio 5 ("ver, não controlar"): informa, não pergunta e não bloqueia
+>   nada. Vale para gasto, receita e transferência. *(O "não tem desfazer" desta
+>   linha caiu ainda na v0.12 — ver o bullet do banner de editar/excluir.)*
 > - **A conta-corrente ganha drill-down** (§5.6), irmão do drill-down do cartão:
 >   hero com os mesmos números do card da aba Contas + **extrato corrido por dia**
 >   + FAB já apontado para a conta. Fecha o ciclo: cartão, poupança e agora conta
@@ -55,6 +56,23 @@
 >     usam a MESMA lista, e não duas que precisam ser mantidas em paralelo.
 >   - **No extrato de uma conta só, a bolinha de conta some** de cada linha: ela
 >     existe para distinguir contas (§4.9), e ali não distingue nada.
+> - **Editar e excluir também avisam — e dão DESFAZER** (§5.7). O mesmo banner
+>   passa a cobrir as três ações (lancei / alterei / excluí), e nas duas últimas
+>   traz um **Desfazer**. **Revoga o "não tem desfazer"** escrito nesta mesma
+>   versão: aquilo era sobre o banner de lançar (lançar errado se conserta
+>   editando), e não vale para EXCLUIR — ali não há o que editar depois, e sem
+>   volta o usuário teria de relançar na mão, que é o "ajuste" que o princípio 4
+>   proíbe. O desfazer continua **fora do caminho**: um botão num aviso que some,
+>   não um diálogo de confirmação.
+>   - **Como:** antes de escrever, o editor tira um **retrato** do que vai mexer
+>     (a regra e as exceções daquela série); desfazer é **repor o retrato** —
+>     apaga o que foi criado, devolve a regra pelo mesmo id, repõe as exceções.
+>     Um caminho só para os seis caminhos de escrita da §4.3, em vez de seis
+>     operações inversas; o id volta igual, então ponteiros guardados continuam
+>     válidos. Transferência tem o seu, mais simples: é uma linha sem série.
+>   - **De um desfazer não se desfaz**: o banner do "Desfeito" não traz ação.
+>   - Fora de alcance: **não há histórico**. Desfaz-se a última ação, enquanto o
+>     banner está na tela (~3,6s) — passou, corrige-se editando.
 > - **O banner de confirmação virou botão** (§5.2): tocar nele abre a edição do
 >   lançamento que ele anuncia. Lançar errado e caçar a linha na lista era o
 >   caminho longo; o curto é tocar onde o olho já está. Para isso o INSERT
@@ -1252,9 +1270,10 @@ Hierarquia do topo (essencial, sem rolar) para o fim (opcional, rolando):
    default do passo 5: se o app escolhe a conta/cartão por você, ele mostra a
    escolha que fez. **Tocar nele abre a edição daquele lançamento** (§5.7) — é o
    caminho curto para consertar o que acabou de sair errado, enquanto ele ainda
-   está na tela. Continua **sem desfazer** (princípio 5): corrigir é editar, não
-   apagar e refazer. Transferência, que não tem editor, cai na confirmação de
-   apagar — a mesma do lápis da linha.
+   está na tela. Aqui, no LANÇAR, não há desfazer: o que acabou de nascer se
+   conserta editando. Transferência, que não tem editor, cai na confirmação de
+   apagar — a mesma do lápis da linha. **Editar e excluir usam o mesmo banner,
+   com Desfazer** (§5.7).
 
 Meta de design: nos 5 primeiros campos resolve-se ~90% dos lançamentos sem
 rolar. Defaults espertos = menos toques. O checkbox de assinatura mora no
@@ -1485,10 +1504,18 @@ mensal da Home.
 
 ### 5.7 Editar lançamento (bottom sheet)
 
-Acionada pelo ícone discreto de editar na linha (§5.1). Para um lançamento
+Acionada pelo ícone discreto de editar na linha (§5.1) — ou tocando no banner
+do lançamento que acabou de ser feito/alterado (§5.2). Para um lançamento
 **avulso**, é um clone do sheet de Lançar (§5.2) com os campos pré-preenchidos,
 mais o botão **Excluir** (mora aqui dentro, não na lista — evita toque
 acidental).
+
+**Ao gravar ou excluir, o banner volta com DESFAZER** (v0.12). Desfazer repõe o
+**retrato** tirado antes da escrita — a regra e as exceções daquela série como
+estavam —, então vale igual para override, desvínculo, divisão de série, apagar
+regra ou apagar série inteira, sem uma operação inversa por caminho. A regra
+volta com o **mesmo id**. É a última ação apenas, enquanto o banner está na
+tela: não existe histórico, e passado o banner a correção é editar de novo.
 
 Para uma ocorrência de **série** (parcela/recorrência), o fluxo muda na v0.8:
 

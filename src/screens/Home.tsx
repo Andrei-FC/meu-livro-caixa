@@ -51,6 +51,7 @@ import { Cofre } from './Cofre';
 import { PoupancaDrilldown } from './PoupancaDrilldown';
 import { CriarEditarPoupanca } from './CriarEditarPoupanca';
 import { categoriasDoMes, maiorGastoDoMes, recorteAssinaturas } from '../lib/relatorio';
+import { aplicarDesfazer, type Desfazer } from '../lib/desfazer';
 import { GerenciarCartoes } from './GerenciarCartoes';
 import { CriarEditarConta } from './CriarEditarConta';
 import { CriarEditarCartao } from './CriarEditarCartao';
@@ -90,7 +91,7 @@ export function Home() {
   // Banner de confirmação do último lançamento (§5.2) — some sozinho. null =
   // nada na tela. Vive na Home porque sobrevive ao fechamento do sheet, e
   // guarda junto o ALVO: tocar no banner abre a edição do que ele anuncia.
-  const [aviso, setAviso] = useState<{ dados: Aviso; alvo: AlvoSalvo } | null>(null);
+  const [aviso, setAviso] = useState<{ dados: Aviso; alvo: AlvoSalvo | null } | null>(null);
   const [menuAberto, setMenuAberto] = useState(false);
   const [emEdicao, setEmEdicao] = useState<OcorrenciaLancamento | null>(null);
   // Sheet de depósito/retirada da poupança (§5.4): reusa o LancarSheet em modo
@@ -543,6 +544,53 @@ export function Home() {
     }
   }
 
+  /**
+   * Apaga uma transferência (§5.7 simplificado) e conta — com Desfazer. O
+   * saldo das duas contas recalcula sozinho: nada é materializado, então o
+   * dinheiro volta aos lugares como se nunca tivesse saído (princípio 4), e o
+   * desfazer repõe a MESMA linha, com o mesmo id.
+   */
+  async function apagarTransferencia(t: OcorrenciaTransferencia) {
+    const linha = transferencias.find((x) => x.id === t.origemId);
+    setTransfApagar(null);
+    await supabase.from('transferencias').delete().eq('id', t.origemId);
+    await carregar();
+    if (!linha) return; // sem a linha crua não há retrato — some sem banner
+    const destino = contaPorId.get(t.para_conta_id);
+    const dados: Aviso = {
+      titulo: t.descricao?.trim() || 'Transferência',
+      valor: t.valor,
+      variante: 'neutro',
+      estado: 'Excluída',
+      meio: `${contaPorId.get(t.de_conta_id)?.nome ?? '—'} → ${destino?.nome ?? '—'}`,
+      tema: destino?.tema ?? null,
+      icone: destino?.icone ?? null,
+      ehPoupanca: destino?.tipo === 'poupanca',
+    };
+    const d: Desfazer = { tipo: 'transferencia', linha };
+    setAviso({ dados: { ...dados, acao: { rotulo: 'Desfazer', onClick: () => desfazerUltima(d, dados) } }, alvo: null });
+  }
+
+  /**
+   * Desfaz a última edição/exclusão (§5.7) e conta que desfez — o mesmo banner,
+   * agora sem ação: de um desfazer não se desfaz (seria um vai-e-vem sem fim).
+   * Falhou (rede/RLS), o banner diz; os dados não ficam pela metade, porque o
+   * retrato é reposto inteiro.
+   */
+  async function desfazerUltima(d: Desfazer, dados: Aviso) {
+    setAviso(null);
+    try {
+      await aplicarDesfazer(d);
+      await carregar();
+      setAviso({ dados: { ...dados, estado: 'Desfeito', acao: undefined }, alvo: null });
+    } catch (e) {
+      setAviso({
+        dados: { titulo: 'Não deu para desfazer', valor: 0, variante: 'neutro', meio: e instanceof Error ? e.message : 'Tente de novo' },
+        alvo: null,
+      });
+    }
+  }
+
   // Grava a data efetiva de pagamento de uma fatura fechada (§5.3). Upsert por
   // (cartao_id, ciclo_abs): pagar de novo o mesmo ciclo sobrescreve a data
   // (não acumula linhas). A data escolhida passa a reger em que mês/dia a
@@ -636,7 +684,7 @@ export function Home() {
         <BannerTemporario
           aviso={aviso?.dados ?? null}
           onFim={() => setAviso(null)}
-          onAbrir={aviso ? () => { const alvo = aviso.alvo; setAviso(null); abrirDoAviso(alvo); } : undefined}
+          onAbrir={aviso?.alvo ? () => { const alvo = aviso.alvo!; setAviso(null); abrirDoAviso(alvo); } : undefined}
         />
       </>
     );
@@ -675,7 +723,7 @@ export function Home() {
         <BannerTemporario
           aviso={aviso?.dados ?? null}
           onFim={() => setAviso(null)}
-          onAbrir={aviso ? () => { const alvo = aviso.alvo; setAviso(null); abrirDoAviso(alvo); } : undefined}
+          onAbrir={aviso?.alvo ? () => { const alvo = aviso.alvo!; setAviso(null); abrirDoAviso(alvo); } : undefined}
         />
         {/* Confirmação de apagar transferência — a mesma da Home, porque a
             linha de transferência existe aqui também (§5.7). */}
@@ -686,11 +734,7 @@ export function Home() {
             corpo={`A transferência de ${formatarBR(transfApagar.valor, { prefixo: true })} será removida. O dinheiro volta aos lugares de origem, como se nunca tivesse saído.`}
             primaria={{
               rotulo: 'Apagar',
-              onClick: async () => {
-                await supabase.from('transferencias').delete().eq('id', transfApagar.origemId);
-                setTransfApagar(null);
-                carregar();
-              },
+              onClick: () => apagarTransferencia(transfApagar),
             }}
             secundaria={{ rotulo: 'Cancelar', onClick: () => setTransfApagar(null) }}
             onScrim={() => setTransfApagar(null)}
@@ -745,7 +789,7 @@ export function Home() {
         <BannerTemporario
           aviso={aviso?.dados ?? null}
           onFim={() => setAviso(null)}
-          onAbrir={aviso ? () => { const alvo = aviso.alvo; setAviso(null); abrirDoAviso(alvo); } : undefined}
+          onAbrir={aviso?.alvo ? () => { const alvo = aviso.alvo!; setAviso(null); abrirDoAviso(alvo); } : undefined}
         />
       </>
     );
@@ -989,7 +1033,7 @@ export function Home() {
       <BannerTemporario
         aviso={aviso?.dados ?? null}
         onFim={() => setAviso(null)}
-        onAbrir={aviso ? () => { const alvo = aviso.alvo; setAviso(null); abrirDoAviso(alvo); } : undefined}
+        onAbrir={aviso?.alvo ? () => { const alvo = aviso.alvo!; setAviso(null); abrirDoAviso(alvo); } : undefined}
       />
 
       <EditarSheet
@@ -999,8 +1043,16 @@ export function Home() {
         contas={contas}
         cartoes={cartoes}
         historicoDescricoes={historicoDescricoes}
+        excecoes={excecoes}
         onFechar={() => setEmEdicao(null)}
-        onSalvou={() => { carregar(); }}
+        onSalvou={(a, d, alvo) => {
+          carregar().then(() => {
+            // O banner do editar/excluir carrega o Desfazer; tocar no corpo
+            // reabre a edição, quando ainda há o que editar.
+            const dados: Aviso = { ...a, acao: { rotulo: 'Desfazer', onClick: () => desfazerUltima(d, a) } };
+            setAviso({ dados, alvo });
+          });
+        }}
       />
 
       {transfApagar && (
@@ -1010,13 +1062,7 @@ export function Home() {
           corpo={`A transferência de ${formatarBR(transfApagar.valor, { prefixo: true })} será removida. O dinheiro volta aos lugares de origem, como se nunca tivesse saído.`}
           primaria={{
             rotulo: 'Apagar',
-            onClick: async () => {
-              // Apaga a regra em transferencias (§5.7 simplificado). O saldo
-              // recalcula sozinho — nada materializado, nenhum "ajuste" (§4.4).
-              await supabase.from('transferencias').delete().eq('id', transfApagar.origemId);
-              setTransfApagar(null);
-              carregar();
-            },
+            onClick: () => apagarTransferencia(transfApagar),
           }}
           secundaria={{ rotulo: 'Cancelar', onClick: () => setTransfApagar(null) }}
           onScrim={() => setTransfApagar(null)}
