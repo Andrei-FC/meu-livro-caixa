@@ -655,7 +655,11 @@ export function EditarSheet({
         <ModalDeAlerta
           tipo="confirmacao"
           titulo="Excluir a série inteira?"
-          corpo="Isto apaga todas as ocorrências, inclusive as passadas já consolidadas. Não dá para desfazer."
+          // O peso continua (apagar série mexe no passado consolidado), mas a
+          // frase final mudou: desde o desfazer (§5.7) isto TEM volta — por
+          // alguns segundos, no aviso do topo. Dizer o contrário aqui seria o
+          // app mentindo no lugar mais assustador.
+          corpo="Isto apaga todas as ocorrências, inclusive as passadas já consolidadas. O aviso no topo deixa desfazer por alguns segundos."
           primaria={{ rotulo: 'Excluir tudo', onClick: () => aplicarExclusao('todas') }}
           secundaria={{ rotulo: 'Cancelar', onClick: () => setConfirmarExcluirTodas(false) }}
           onScrim={() => setConfirmarExcluirTodas(false)}
