@@ -7,11 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "tokens": "node src/design/generate.cjs"
+    "tokens": "node src/design/generate.cjs",
+    "sql": "node db/sql.mjs"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.0",
     "@fontsource/inter": "^5.0.18",
+    "@supabase/supabase-js": "^2.45.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -19,6 +20,7 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "pg": "^8.23.1",
     "typescript": "^5.5.3",
     "vite": "^5.4.0",
     "vite-plugin-pwa": "^0.20.1"

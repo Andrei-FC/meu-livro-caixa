@@ -6,3 +6,8 @@ dist
 .DS_Store
 dev-dist
 tsconfig.tsbuildinfo
+
+# Material de trabalho que não é código: faturas, prints, exports, dumps,
+# rascunhos. Jogue qualquer coisa assim aqui dentro e não precisa de uma
+# exceção nova no .gitignore a cada vez.
+/local/

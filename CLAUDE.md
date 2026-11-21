@@ -41,6 +41,7 @@ npm run build     # tsc -b && vite build
 npm run preview   # testa o build
 npm run tokens    # regenera tokens.css + tokens.ts a partir de tokens.json
 npx tsc --noEmit  # rode a CADA mudança — não há testes nem linter
+npm run sql       # roda SQL no banco: leitura; --dry ensaia escrita; --write grava
 ```
 
 Não há suíte de testes nem ESLint. `tsc --noEmit` é a única rede de proteção:
@@ -97,6 +98,11 @@ O schema vive no painel do Supabase, não em migrations versionadas: o
   `src/design/tokens.ts`) — não há campo de cor no schema (§5.5).
 - Entregue arquivos completos quando o arquivo for reescrito; o projeto foi
   construído assim.
+- **Material de trabalho que não é código vai em `local/`** — faturas, prints,
+  exports, dumps, rascunhos. A pasta é ignorada pelo git, então não é preciso
+  abrir uma exceção nova no `.gitignore` a cada vez. Nada de PDF de banco,
+  print de extrato ou export com dado pessoal fora dali: no git, apagar depois
+  não resolve.
 
 ## Invariantes — quebrar isso gera bug silencioso
 
