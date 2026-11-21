@@ -532,7 +532,8 @@ export function Home() {
    */
   function abrirDoAviso(alvo: AlvoSalvo) {
     const [ano, mes] = parteData(alvo.data);
-    setPagina(null); // o editor mora na Home; um drill-down aberto sai da frente
+    // O editor e a confirmação de apagar são overlays compartilhados: abrem
+    // por cima do drill-down, sem derrubá-lo.
     if (alvo.tipo === 'lancamento') {
       const o = lancamentosNoMes(lancamentos, ano, mes, hoje, indiceExcecoes)
         .find((x) => x.origemId === alvo.id);
@@ -605,6 +606,52 @@ export function Home() {
     carregar();
   }
 
+  /**
+   * Overlays compartilhados — o editor de lançamento (§5.7) e a confirmação de
+   * apagar transferência.
+   *
+   * Eles moram AQUI, fora das telas, porque a mesma linha aparece na Home e nos
+   * dois drill-downs (§5.3, §5.6): tocar no lápis não pode desmontar a tela de
+   * baixo pra alcançar o editor — fechar a edição tem que devolver o usuário
+   * exatamente onde ele estava, com o cartão aberto, o ciclo escolhido e o
+   * scroll intactos. São `BottomSheet`/`Modal` em `position: fixed`, então
+   * sobrepõem sem mexer no que está embaixo.
+   */
+  const editorDeLancamento = (
+    <EditarSheet
+      aberto={emEdicao !== null}
+      ocorrencia={emEdicao}
+      regra={emEdicao ? lancamentos.find((l) => l.id === emEdicao.origemId) ?? null : null}
+      contas={contas}
+      cartoes={cartoes}
+      historicoDescricoes={historicoDescricoes}
+      excecoes={excecoes}
+      onFechar={() => setEmEdicao(null)}
+      onSalvou={(a, d, alvo) => {
+        carregar().then(() => {
+          // O banner do editar/excluir carrega o Desfazer; tocar no corpo
+          // reabre a edição, quando ainda há o que editar.
+          const dados: Aviso = { ...a, acao: { rotulo: 'Desfazer', onClick: () => desfazerUltima(d, a) } };
+          setAviso({ dados, alvo });
+        });
+      }}
+    />
+  );
+
+  const confirmacaoApagarTransf = transfApagar && (
+    <ModalDeAlerta
+      tipo="confirmacao"
+      titulo="Apagar transferência?"
+      corpo={`A transferência de ${formatarBR(transfApagar.valor, { prefixo: true })} será removida. O dinheiro volta aos lugares de origem, como se nunca tivesse saído.`}
+      primaria={{
+        rotulo: 'Apagar',
+        onClick: () => apagarTransferencia(transfApagar),
+      }}
+      secundaria={{ rotulo: 'Cancelar', onClick: () => setTransfApagar(null) }}
+      onScrim={() => setTransfApagar(null)}
+    />
+  );
+
   // Renderiza as páginas próprias por cima da Home (§5.8). Recarrega os dados ao
   // salvar; o "voltar" das telas de criar/editar leva à lista correspondente.
   if (pagina?.tela === 'gerenciar-contas') {
@@ -664,7 +711,7 @@ export function Home() {
           hoje={hoje}
           cicloInicial={pagina.cicloInicial}
           onVoltar={() => setPagina(null)}
-          onEditar={(o) => { setPagina(null); setEmEdicao(o); }}
+          onEditar={setEmEdicao}
           onPagar={(cicloAbs, dataISO) => registrarPagamento(pagina.cartao, cicloAbs, dataISO)}
           onLancar={() => setSheetAberto(true)}
         />
@@ -686,6 +733,9 @@ export function Home() {
           onFim={() => setAviso(null)}
           onAbrir={aviso?.alvo ? () => { const alvo = aviso.alvo!; setAviso(null); abrirDoAviso(alvo); } : undefined}
         />
+        {/* Editar e apagar acontecem SOBRE a fatura — fechar devolve aqui. */}
+        {editorDeLancamento}
+        {confirmacaoApagarTransf}
       </>
     );
   }
@@ -705,7 +755,7 @@ export function Home() {
           hoje={hoje}
           mesInicial={{ ano, mes }}
           onVoltar={() => setPagina(null)}
-          onEditar={(o) => { setPagina(null); setEmEdicao(o); }}
+          onEditar={setEmEdicao}
           onApagarTransf={setTransfApagar}
           onAbrirCartao={(k, cicloInicial) => setPagina({ tela: 'drill-cartao', cartao: k, cicloInicial })}
           onLancar={() => setSheetAberto(true)}
@@ -725,21 +775,10 @@ export function Home() {
           onFim={() => setAviso(null)}
           onAbrir={aviso?.alvo ? () => { const alvo = aviso.alvo!; setAviso(null); abrirDoAviso(alvo); } : undefined}
         />
-        {/* Confirmação de apagar transferência — a mesma da Home, porque a
-            linha de transferência existe aqui também (§5.7). */}
-        {transfApagar && (
-          <ModalDeAlerta
-            tipo="confirmacao"
-            titulo="Apagar transferência?"
-            corpo={`A transferência de ${formatarBR(transfApagar.valor, { prefixo: true })} será removida. O dinheiro volta aos lugares de origem, como se nunca tivesse saído.`}
-            primaria={{
-              rotulo: 'Apagar',
-              onClick: () => apagarTransferencia(transfApagar),
-            }}
-            secundaria={{ rotulo: 'Cancelar', onClick: () => setTransfApagar(null) }}
-            onScrim={() => setTransfApagar(null)}
-          />
-        )}
+        {/* Editar lançamento e apagar transferência — os mesmos overlays da
+            Home, porque as duas linhas existem aqui também (§5.7). */}
+        {editorDeLancamento}
+        {confirmacaoApagarTransf}
       </>
     );
   }
@@ -1036,38 +1075,8 @@ export function Home() {
         onAbrir={aviso?.alvo ? () => { const alvo = aviso.alvo!; setAviso(null); abrirDoAviso(alvo); } : undefined}
       />
 
-      <EditarSheet
-        aberto={emEdicao !== null}
-        ocorrencia={emEdicao}
-        regra={emEdicao ? lancamentos.find((l) => l.id === emEdicao.origemId) ?? null : null}
-        contas={contas}
-        cartoes={cartoes}
-        historicoDescricoes={historicoDescricoes}
-        excecoes={excecoes}
-        onFechar={() => setEmEdicao(null)}
-        onSalvou={(a, d, alvo) => {
-          carregar().then(() => {
-            // O banner do editar/excluir carrega o Desfazer; tocar no corpo
-            // reabre a edição, quando ainda há o que editar.
-            const dados: Aviso = { ...a, acao: { rotulo: 'Desfazer', onClick: () => desfazerUltima(d, a) } };
-            setAviso({ dados, alvo });
-          });
-        }}
-      />
-
-      {transfApagar && (
-        <ModalDeAlerta
-          tipo="confirmacao"
-          titulo="Apagar transferência?"
-          corpo={`A transferência de ${formatarBR(transfApagar.valor, { prefixo: true })} será removida. O dinheiro volta aos lugares de origem, como se nunca tivesse saído.`}
-          primaria={{
-            rotulo: 'Apagar',
-            onClick: () => apagarTransferencia(transfApagar),
-          }}
-          secundaria={{ rotulo: 'Cancelar', onClick: () => setTransfApagar(null) }}
-          onScrim={() => setTransfApagar(null)}
-        />
-      )}
+      {editorDeLancamento}
+      {confirmacaoApagarTransf}
     </div>
   );
 }
